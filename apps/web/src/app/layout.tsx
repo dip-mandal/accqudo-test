@@ -52,9 +52,9 @@ export const metadata: Metadata = {
   },
 
   icons: {
-    icon: '/logo_saas.jpg',
-    shortcut: '/logo_saas.jpg',
-    apple: '/logo_saas.jpg',
+    icon: 'https://res.cloudinary.com/dcfofc9fa/image/upload/v1772563915/sa_logo_xzso0t.png',
+    shortcut: 'https://res.cloudinary.com/dcfofc9fa/image/upload/v1772563915/sa_logo_xzso0t.png',
+    apple: 'https://res.cloudinary.com/dcfofc9fa/image/upload/v1772563915/sa_logo_xzso0t.png',
   },
 
   openGraph: {
@@ -67,7 +67,7 @@ export const metadata: Metadata = {
       'Practice for competitive exams with chapter-wise, topic-wise, subject-wise and full-length mock tests, instant analytics and rankings.',
     images: [
       {
-        url: '/logo_saas.jpg',
+        url: 'https://res.cloudinary.com/dcfofc9fa/image/upload/v1772563915/sa_logo_xzso0t.png',
         width: 1200,
         height: 630,
         alt: 'accqudo — Multi-Exam Test Series Platform',
@@ -80,7 +80,7 @@ export const metadata: Metadata = {
     title: 'accqudo — Multi-Exam Test Series Platform',
     description:
       'Practice smarter with real exam patterns, mock tests, instant analytics and rankings.',
-    images: ['/logo_saas.jpg'],
+    images: ['https://res.cloudinary.com/dcfofc9fa/image/upload/v1772563915/sa_logo_xzso0t.png'],
   },
 
   robots: {
