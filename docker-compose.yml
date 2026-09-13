@@ -1,0 +1,93 @@
+
+
+services:
+  mysql:
+    image: mysql:8.0.35
+    container_name: accqudo_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: accqudo_root_secret
+      MYSQL_DATABASE: accqudo_db
+      MYSQL_USER: accqudo_user
+      MYSQL_PASSWORD: accqudo_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - accqudo_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: accqudo_redis
+    restart: always
+    command: redis-server --requirepass accqudo_redis_secret
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - accqudo_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "accqudo_redis_secret", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: accqudo_api
+    restart: always
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=mysql+aiomysql://accqudo_user:accqudo_password@mysql:3306/accqudo_db
+      - REDIS_URL=redis://:accqudo_redis_secret@redis:6379/0
+      - JWT_SECRET=c2VjcmV0LWtleS1mb3ItYWNjcXVkby0yMDI2
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    networks:
+      - accqudo_net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: accqudo_worker
+    restart: always
+    command: python -m app.workers.expiration_worker
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=mysql+aiomysql://accqudo_user:accqudo_password@mysql:3306/accqudo_db
+      - REDIS_URL=redis://:accqudo_redis_secret@redis:6379/0
+      - JWT_SECRET=c2VjcmV0LWtleS1mb3ItYWNjcXVkby0yMDI2
+    volumes:
+      - ./backend:/app
+    networks:
+      - accqudo_net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  accqudo_net:
+    driver: bridge

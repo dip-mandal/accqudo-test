@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Razorpay Test Payment</title>
+
+    <!-- Razorpay Checkout -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: white;
+            width: 360px;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        label {
+            display: block;
+            margin-top: 20px;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 20px;
+            padding: 13px;
+            border: none;
+            border-radius: 6px;
+            background: #3399cc;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 20px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="card">
+
+    <h1>Test Payment</h1>
+
+    <p>Razorpay Standard Checkout</p>
+
+    <label for="amount">
+        Amount (₹)
+    </label>
+
+    <input
+        id="amount"
+        type="number"
+        min="1"
+        step="1"
+        value="100"
+    >
+
+    <button id="payButton">
+        Pay ₹100
+    </button>
+
+    <div id="status"></div>
+
+</div>
+
+<script>
+
+const BACKEND_URL = "http://127.0.0.1:8001";
+
+const amountInput = document.getElementById("amount");
+const payButton = document.getElementById("payButton");
+const status = document.getElementById("status");
+
+
+amountInput.addEventListener("input", () => {
+
+    const amount = Number(amountInput.value);
+
+    if (amount > 0) {
+        payButton.textContent = `Pay ₹${amount}`;
+    }
+
+});
+
+
+async function createOrder(amountInRupees) {
+
+    const response = await fetch(
+        `${BACKEND_URL}/create-order`,
+        {
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                amount: Math.round(amountInRupees * 100),
+                currency: "INR",
+                receipt: "test_receipt_001"
+            })
+        }
+    );
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+            error.detail || "Unable to create order"
+        );
+    }
+
+    return response.json();
+}
+
+
+async function verifyPayment(paymentResponse) {
+
+    const response = await fetch(
+        `${BACKEND_URL}/verify-payment`,
+        {
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify(paymentResponse)
+        }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+        throw new Error(
+            result.detail || "Payment verification failed"
+        );
+    }
+
+    return result;
+}
+
+
+payButton.addEventListener("click", async () => {
+
+    const amount = Number(amountInput.value);
+
+    if (!amount || amount < 1) {
+        status.textContent = "Enter an amount of at least ₹1.";
+        return;
+    }
+
+    payButton.disabled = true;
+    status.textContent = "Creating order...";
+
+    try {
+
+        // 1. Create Razorpay order on backend
+        const order = await createOrder(amount);
+
+        status.textContent = "Opening Razorpay Checkout...";
+
+        // 2. Open Razorpay Checkout
+        const options = {
+
+            key: order.key_id,
+
+            amount: order.amount,
+
+            currency: order.currency,
+
+            name: "My Test Store",
+
+            description: "Razorpay Test Payment",
+
+            order_id: order.order_id,
+
+            handler: async function (response) {
+
+                status.textContent =
+                    "Payment received. Verifying...";
+
+                try {
+
+                    // 3. Verify payment on backend
+                    const result =
+                        await verifyPayment(response);
+
+                    status.innerHTML = `
+                        <strong>Payment successful!</strong><br>
+                        Payment ID:
+                        ${result.payment_id}
+                    `;
+
+                } catch (error) {
+
+                    status.textContent =
+                        "Verification failed: " +
+                        error.message;
+                }
+            },
+
+            modal: {
+                ondismiss: function () {
+                    status.textContent =
+                        "Payment window closed.";
+                    payButton.disabled = false;
+                }
+            },
+
+            theme: {
+                color: "#3399cc"
+            }
+        };
+
+        const razorpay = new Razorpay(options);
+
+        razorpay.on("payment.failed", function (response) {
+
+            status.textContent =
+                "Payment failed: " +
+                (response.error.description ||
+                 "Unknown error");
+
+            payButton.disabled = false;
+        });
+
+        razorpay.open();
+
+    } catch (error) {
+
+        status.textContent =
+            "Error: " + error.message;
+
+        payButton.disabled = false;
+    }
+
+});
+
+</script>
+
+</body>
+</html>
