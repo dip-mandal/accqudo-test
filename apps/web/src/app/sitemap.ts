@@ -4,11 +4,6 @@ import path from "path";
 
 const baseUrl = "https://accqudo.com";
 
-/**
- * Routes that should NOT appear in the public sitemap.
- *
- * These are private, authentication, API, or user-specific areas.
- */
 const EXCLUDED_ROUTES = new Set([
   "/api",
   "/admin",
@@ -16,15 +11,9 @@ const EXCLUDED_ROUTES = new Set([
   "/attempt",
   "/result",
   "/login",
+  "/team",
 ]);
 
-/**
- * Returns true when a folder is a Next.js dynamic/parallel route
- * such as [id], [...slug], [[...slug]], @modal, etc.
- *
- * These routes should not be automatically added to the sitemap
- * because we need their real URLs instead of placeholder URLs.
- */
 function isSpecialRouteSegment(segment: string): boolean {
   return (
     segment.startsWith("[") ||
@@ -33,9 +22,6 @@ function isSpecialRouteSegment(segment: string): boolean {
   );
 }
 
-/**
- * Recursively finds static public pages inside src/app.
- */
 function getPages(dir: string, baseRoute = ""): string[] {
   let routes: string[] = [];
 
@@ -50,15 +36,15 @@ function getPages(dir: string, baseRoute = ""): string[] {
     const stat = fs.statSync(filePath);
 
     if (stat.isDirectory()) {
-      // Skip Next.js route groups, parallel routes,
-      // and dynamic routes.
+      // Skip dynamic routes such as [id],
+      // catch-all routes, route groups, and parallel routes.
       if (isSpecialRouteSegment(file)) {
         continue;
       }
 
       const nextRoute = `${baseRoute}/${file}`;
 
-      // Skip private routes and everything underneath them.
+      // Don't include private sections.
       if (
         EXCLUDED_ROUTES.has(nextRoute) ||
         [...EXCLUDED_ROUTES].some(
@@ -75,7 +61,7 @@ function getPages(dir: string, baseRoute = ""): string[] {
     } else if (file === "page.tsx") {
       const route = baseRoute || "/";
 
-      // Don't include excluded routes.
+      // Don't include private pages.
       if (
         EXCLUDED_ROUTES.has(route) ||
         [...EXCLUDED_ROUTES].some(
@@ -98,8 +84,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const pages = getPages(appDir);
 
-  // Remove duplicates and sort routes.
-  const uniquePages = Array.from(new Set(pages)).sort();
+  const uniquePages = Array.from(
+    new Set(pages)
+  ).sort();
 
   return uniquePages.map((route) => ({
     url: `${baseUrl}${route}`,
