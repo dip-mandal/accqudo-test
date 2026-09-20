@@ -141,7 +141,7 @@ export default function UnifiedAdminStudioPage() {
   const fetchQuestions = useCallback(async () => {
     try {
       const token = localStorage.getItem('accqudo_token');
-      const res = await fetch(`${apiBase}/admin/questions/search?limit=100`, {
+      const res = await fetch(`${apiBase}/admin/questions/search`, {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
