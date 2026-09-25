@@ -130,7 +130,11 @@ const solutionDiagramInputRef = useRef<HTMLInputElement>(null);
   const fetchQuestions = useCallback(async () => {
     try {
       const token = localStorage.getItem('accqudo_token') || localStorage.getItem('token');
-      const res = await fetch(`${apiBase}/team/questions/search?q=${searchQuery}`, {
+      const query = searchQuery.trim();
+      const searchUrl = query
+        ? `${apiBase}/team/questions/search?q=${encodeURIComponent(query)}`
+        : `${apiBase}/team/questions/search`;
+      const res = await fetch(searchUrl, {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -163,7 +167,7 @@ const solutionDiagramInputRef = useRef<HTMLInputElement>(null);
       // Team endpoints perform the authenticated staff-role check server-side.
       const hierRes = await fetch(`${apiBase}/team/hierarchy`, { headers });
       if (hierRes.status === 401 || hierRes.status === 403) {
-        alert('Access denied: TEAM, ADMIN, or SUPER_ADMIN privileges required.');
+        alert('Access denied: ADMIN or SUPER_ADMIN privileges required.');
         router.push('/dashboard');
         return;
       }
@@ -656,12 +660,6 @@ const handleSolutionDiagramUpload = async (
     );
   };
 
-  const updateQuestionMarkOverride = (id: number, marks: number, negMarks: number) => {
-    setSelectedQuestions((prev) =>
-      prev.map((q) => (q.question_id === id ? { ...q, marks, negative_marks: negMarks } : q))
-    );
-  };
-
   const togglePackageAttachment = (pkgId: number) => {
     setSelectedPackageIds((prev) =>
       prev.includes(pkgId) ? prev.filter((p) => p !== pkgId) : [...prev, pkgId]
@@ -680,16 +678,15 @@ const handleSolutionDiagramUpload = async (
     setSubmittingPaper(true);
     setBanner(null);
 
+    // The backend assembler accepts a flat `question_ids` list.
+    // Ownership (`created_by` / `added_by`) is assigned server-side from
+    // the authenticated admin, so the browser must not send those fields.
     const payload = {
       exam_id: parseInt(paperExamId) || 1,
       title: paperTitle,
       duration_minutes: paperDuration,
       instructions: { rules: paperInstructions },
-      questions: selectedQuestions.map((q) => ({
-        question_id: q.question_id,
-        marks: q.marks,
-        negative_marks: q.negative_marks,
-      })),
+      question_ids: selectedQuestions.map((q) => q.question_id),
       package_ids: selectedPackageIds,
     };
 
@@ -836,13 +833,13 @@ const handleSolutionDiagramUpload = async (
           <div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-[#1F3A5C] px-3 py-0.5 text-xs font-bold text-white">
-                Staff Control Plane
+                Admin Control Plane
               </span>
               <span className="text-xs text-stone-500">Exam Engine &amp; Knowledge Index</span>
             </div>
             <h1 className="text-2xl font-bold font-serif text-[#16293F] mt-2">Accqudo Team CMS &amp; Paper Studio</h1>
             <p className="text-xs text-stone-500 mt-0.5">
-              Team question authoring, paper assembly, and academic taxonomy management.
+              Admin question authoring, paper assembly, and academic taxonomy management.
             </p>
           </div>
 
@@ -1003,7 +1000,7 @@ const handleSolutionDiagramUpload = async (
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-500 mb-1">Marks</label>
+                  <label className="block text-[11px] font-bold text-stone-500 mb-1">Default Marks</label>
                   <input
                     type="number"
                     step="0.5"
@@ -1310,6 +1307,11 @@ const handleSolutionDiagramUpload = async (
                 </div>
               </div>
 
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[10px] text-amber-800">
+                Paper assembly uses each question's stored default marks and negative marks.
+                The authenticated admin is recorded server-side as the paper creator and question adder.
+              </div>
+
               <div className="rounded-xl bg-[#1F3A5C]/5 border border-[#1F3A5C]/20 p-4 space-y-2">
                 <div className="flex justify-between text-xs font-semibold text-[#1F3A5C]">
                   <span>Selected Questions:</span>
@@ -1445,34 +1447,22 @@ const handleSolutionDiagramUpload = async (
 
                       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-200">
                         <div>
-                          <label className="text-[10px] font-bold text-stone-500">Marks</label>
+                          <label className="text-[10px] font-bold text-stone-500">Default Marks</label>
                           <input
                             type="number"
                             step="0.5"
                             value={q.marks}
-                            onChange={(e) =>
-                              updateQuestionMarkOverride(
-                                q.question_id,
-                                parseFloat(e.target.value) || 0,
-                                q.negative_marks
-                              )
-                            }
+                            readOnly
                             className="mt-0.5 w-full rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-800 font-mono focus:border-[#1F3A5C] focus:outline-none"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-stone-500">Neg Marks</label>
+                          <label className="text-[10px] font-bold text-stone-500">Default Neg. Marks</label>
                           <input
                             type="number"
                             step="0.01"
                             value={q.negative_marks}
-                            onChange={(e) =>
-                              updateQuestionMarkOverride(
-                                q.question_id,
-                                q.marks,
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
+                            readOnly
                             className="mt-0.5 w-full rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-800 font-mono focus:border-[#1F3A5C] focus:outline-none"
                           />
                         </div>
