@@ -8,6 +8,8 @@ import {
   ArrowRight,
   LogOut,
   Lock,
+  BarChart3,
+  ShoppingBag,
 } from 'lucide-react';
 
 interface StaffUser {
@@ -353,6 +355,36 @@ export default function TeamPortalLandingPage() {
             </div>
           </div>
 
+          {/* Your Contribution */}
+          <div
+            onClick={() => router.push('/team/contribution')}
+            className="group cursor-pointer space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-[#1F3A5C]"
+          >
+            <div className="flex items-center justify-between">
+
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#1F3A5C]/10 text-[#1F3A5C]">
+                <BarChart3 className="h-6 w-6" />
+              </div>
+
+              <span className="flex items-center gap-1 text-xs font-bold text-[#1F3A5C] transition group-hover:translate-x-1">
+                View Contribution
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+
+            </div>
+
+            <div>
+              <h3 className="font-serif text-lg font-bold text-[#16293F]">
+                Your Contribution
+              </h3>
+
+              <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                View your contribution, authored questions,
+                papers, and other academic activities.
+              </p>
+            </div>
+          </div>
+
           {/* Admin Panel */}
           {isAdminOrSuper ? (
             <div
@@ -413,6 +445,38 @@ export default function TeamPortalLandingPage() {
 
             </div>
           )}
+
+          {/* Package Sells */}
+          {isAdminOrSuper ? (
+            <div
+              onClick={() => router.push('/team/sells')}
+              className="group cursor-pointer space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-[#1F3A5C]"
+            >
+              <div className="flex items-center justify-between">
+
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 text-purple-700">
+                  <ShoppingBag className="h-6 w-6" />
+                </div>
+
+                <span className="flex items-center gap-1 text-xs font-bold text-purple-700 transition group-hover:translate-x-1">
+                  View Package Sells
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
+
+              </div>
+
+              <div>
+                <h3 className="font-serif text-lg font-bold text-[#16293F]">
+                  Packege Sells
+                </h3>
+
+                <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                  View package sales, purchase activity,
+                  and related subscription information.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {/* Super Admin Panel */}
           {isSuper ? (
