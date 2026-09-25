@@ -352,7 +352,7 @@ export default function AdminCommandCenterPage() {
 
           <div className="mt-4 md:mt-0 flex flex-wrap items-center gap-3">
             <button
-              onClick={() => router.push('/admin/test')}
+              onClick={() => router.push('/ptz/admin/test')}
               className="rounded-lg bg-[#1F3A5C] px-4 py-2 text-xs font-bold text-white hover:bg-[#16293F] transition shadow-sm flex items-center gap-1.5"
             >
               <span>⚙ Question &amp; Paper Studio</span> &rarr;
@@ -417,7 +417,7 @@ export default function AdminCommandCenterPage() {
           <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm flex flex-col justify-between">
             <p className="text-[10px] font-bold uppercase text-stone-500">Paper Studio</p>
             <button
-              onClick={() => router.push('/admin/test')}
+              onClick={() => router.push('/ptz/admin/test')}
               className="mt-1 w-full rounded bg-stone-100 border border-stone-300 py-1.5 text-xs font-bold text-[#1F3A5C] hover:bg-[#1F3A5C] hover:text-white transition"
             >
               Open Studio &rarr;
