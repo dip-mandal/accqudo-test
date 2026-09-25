@@ -17,20 +17,37 @@ import {
   XCircle,
 } from 'lucide-react';
 
+/* ============================================================================
+   TYPES
+============================================================================ */
+
 interface PackageSale {
   id: number;
+  package_id: number;
   title: string;
   description: string | null;
-  tier: string;
-  price: number;
-  validity_days: number;
+  exam_id: number | null;
+
+  /*
+   * Current package system does not have a tier.
+   * Legacy package system may have one.
+   */
+  tier: string | null;
+
+  expiry_type: string | null;
+
+  price_inr: number;
+  validity_days: number | null;
   is_active: boolean;
-  created_at: string | null;
-  sales_count: number;
+
+  sales: number;
+  successful_sales: number;
   revenue: number;
+
   active_students: number;
   total_students: number;
   expired_students: number;
+  subscription_count: number;
 }
 
 interface MonthlyRevenue {
@@ -43,54 +60,123 @@ interface MonthlyRevenue {
 interface PaymentStatus {
   status: string;
   count: number;
-  amount: number;
 }
 
 interface RecentSale {
   id: number;
   user_id: number;
-  student_name: string;
+
+  student_name: string | null;
   student_email: string | null;
-  package_id: number | null;
+
+  package_id: number;
   package_title: string;
-  amount: number;
-  currency: string;
+
+  amount_inr: number;
+
   status: string;
-  razorpay_order_id: string;
-  razorpay_payment_id: string | null;
+
+  order_id: string | null;
+  payment_id: string | null;
+
   created_at: string | null;
 }
 
-interface DashboardResponse {
-  generated_at: string;
-  overview: {
-    active_packages: number;
-    total_packages: number;
-    total_sales: number;
-    total_revenue: number;
-    active_students: number;
-    unique_active_students: number;
-  };
-  top_package: PackageSale | null;
-  packages: PackageSale[];
-  monthly_revenue: MonthlyRevenue[];
-  payment_status: PaymentStatus[];
-  recent_sales: RecentSale[];
+interface EnrollmentReport {
+  package_id: number;
+  package_title: string;
+
+  students: number;
+  total_enrollments: number;
+
+  active_students: number;
+  expired_students: number;
+
+  sales: number;
+  revenue: number;
 }
 
-function formatCurrency(value: number) {
+interface DashboardSummary {
+  total_revenue: number;
+  revenue: number;
+
+  successful_sales: number;
+  sales: number;
+
+  active_students: number;
+  active_packages: number;
+  total_packages: number;
+  all_packages: number;
+
+  profit: number | null;
+}
+
+interface TopPackage {
+  id: number;
+  title: string;
+  sales: number;
+  revenue: number;
+  active_students: number;
+}
+
+interface DashboardResponse {
+  period?: {
+    months: number;
+    start_date: string;
+    end_date: string;
+  };
+
+  summary: DashboardSummary;
+
+  total_revenue: number;
+  revenue: number;
+
+  successful_sales: number;
+  active_students: number;
+  active_packages: number;
+  total_packages: number;
+  profit: number | null;
+
+  monthly_revenue: MonthlyRevenue[];
+
+  revenue_trend?: MonthlyRevenue[];
+
+  payment_status: PaymentStatus[];
+
+  package_performance: PackageSale[];
+
+  enrollment_report: EnrollmentReport[];
+
+  recent_sales: RecentSale[];
+
+  top_package: TopPackage | null;
+
+  sources?: {
+    packages: string;
+    payments: string;
+    subscriptions: string;
+  };
+}
+
+/* ============================================================================
+   HELPERS
+============================================================================ */
+
+function formatCurrency(value: number | null | undefined) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 0,
-  }).format(value || 0);
+  }).format(Number(value || 0));
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat('en-IN').format(value || 0);
+function formatNumber(value: number | null | undefined) {
+  return new Intl.NumberFormat('en-IN').format(
+    Number(value || 0),
+  );
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null | undefined) {
   if (!value) return '—';
 
   const date = new Date(value);
@@ -106,13 +192,13 @@ function formatDate(value: string | null) {
   });
 }
 
-function normalizeStatus(status: string) {
+function normalizeStatus(status: string | null | undefined) {
   return String(status || '')
     .trim()
     .toLowerCase();
 }
 
-function isSuccessfulStatus(status: string) {
+function isSuccessfulStatus(status: string | null | undefined) {
   return [
     'paid',
     'success',
@@ -122,7 +208,7 @@ function isSuccessfulStatus(status: string) {
   ].includes(normalizeStatus(status));
 }
 
-function isFailedStatus(status: string) {
+function isFailedStatus(status: string | null | undefined) {
   return [
     'failed',
     'failure',
@@ -130,6 +216,66 @@ function isFailedStatus(status: string) {
     'canceled',
   ].includes(normalizeStatus(status));
 }
+
+/**
+ * The backend returns `package_performance`.
+ * This helper makes sure an unexpected/null response never causes:
+ *
+ *     TypeError: packages is not iterable
+ */
+function normalizePackages(
+  value: unknown,
+): PackageSale[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value as PackageSale[];
+}
+
+function normalizeMonthlyRevenue(
+  value: unknown,
+): MonthlyRevenue[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value as MonthlyRevenue[];
+}
+
+function normalizePaymentStatus(
+  value: unknown,
+): PaymentStatus[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value as PaymentStatus[];
+}
+
+function normalizeRecentSales(
+  value: unknown,
+): RecentSale[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value as RecentSale[];
+}
+
+function normalizeEnrollmentReport(
+  value: unknown,
+): EnrollmentReport[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value as EnrollmentReport[];
+}
+
+/* ============================================================================
+   PAGE
+============================================================================ */
 
 export default function PackageSalesPage() {
   const router = useRouter();
@@ -140,15 +286,27 @@ export default function PackageSalesPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
   const [months, setMonths] = useState(12);
+
+  const [generatedAt, setGeneratedAt] =
+    useState<string | null>(null);
+
+  /* --------------------------------------------------------------------------
+     API BASE
+  -------------------------------------------------------------------------- */
 
   const apiBase = (
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     'http://localhost:8001/api/v1'
   ).replace(/\/$/, '');
 
+  /* --------------------------------------------------------------------------
+     LOAD DASHBOARD
+  -------------------------------------------------------------------------- */
+
   const loadDashboard = async (
-    showRefresh = false
+    showRefresh = false,
   ) => {
     try {
       if (showRefresh) {
@@ -172,13 +330,19 @@ export default function PackageSalesPage() {
         `${apiBase}/team/sells/dashboard?months=${months}`,
         {
           method: 'GET',
+
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: 'application/json',
           },
+
           cache: 'no-store',
-        }
+        },
       );
+
+      /* ----------------------------------------------------------------------
+         AUTH
+      ---------------------------------------------------------------------- */
 
       if (response.status === 401) {
         localStorage.removeItem('accqudo_token');
@@ -194,29 +358,190 @@ export default function PackageSalesPage() {
         return;
       }
 
+      /* ----------------------------------------------------------------------
+         ERROR
+      ---------------------------------------------------------------------- */
+
       if (!response.ok) {
-        const text = await response.text();
+        const responseText = await response.text();
+
+        let message = responseText;
+
+        try {
+          const parsed = JSON.parse(responseText);
+
+          if (parsed?.detail) {
+            message =
+              typeof parsed.detail === 'string'
+                ? parsed.detail
+                : JSON.stringify(parsed.detail);
+          }
+        } catch {
+          // Keep original response text.
+        }
 
         throw new Error(
-          text ||
-            `Unable to load package sales dashboard (${response.status}).`
+          message ||
+            `Unable to load package sales dashboard (${response.status}).`,
         );
       }
 
-      const data =
-        (await response.json()) as DashboardResponse;
+      /* ----------------------------------------------------------------------
+         RESPONSE
+      ---------------------------------------------------------------------- */
 
-      setDashboard(data);
+      const rawData = await response.json();
+
+      /*
+       * IMPORTANT:
+       *
+       * Backend returns:
+       *
+       * summary
+       * package_performance
+       * monthly_revenue
+       * payment_status
+       * recent_sales
+       *
+       * We normalize these here before rendering.
+       */
+
+      const summary: DashboardSummary = {
+        total_revenue: Number(
+          rawData?.summary?.total_revenue ??
+            rawData?.total_revenue ??
+            0,
+        ),
+
+        revenue: Number(
+          rawData?.summary?.revenue ??
+            rawData?.revenue ??
+            rawData?.summary?.total_revenue ??
+            0,
+        ),
+
+        successful_sales: Number(
+          rawData?.summary?.successful_sales ??
+            rawData?.successful_sales ??
+            0,
+        ),
+
+        sales: Number(
+          rawData?.summary?.sales ??
+            rawData?.successful_sales ??
+            0,
+        ),
+
+        active_students: Number(
+          rawData?.summary?.active_students ??
+            rawData?.active_students ??
+            0,
+        ),
+
+        active_packages: Number(
+          rawData?.summary?.active_packages ??
+            rawData?.active_packages ??
+            0,
+        ),
+
+        total_packages: Number(
+          rawData?.summary?.total_packages ??
+            rawData?.total_packages ??
+            0,
+        ),
+
+        all_packages: Number(
+          rawData?.summary?.all_packages ??
+            rawData?.total_packages ??
+            0,
+        ),
+
+        profit:
+          rawData?.summary?.profit ??
+          rawData?.profit ??
+          null,
+      };
+
+      const normalizedData: DashboardResponse = {
+        ...rawData,
+
+        summary,
+
+        total_revenue: summary.total_revenue,
+        revenue: summary.revenue,
+
+        successful_sales:
+          summary.successful_sales,
+
+        active_students:
+          summary.active_students,
+
+        active_packages:
+          summary.active_packages,
+
+        total_packages:
+          summary.total_packages,
+
+        profit: summary.profit,
+
+        /*
+         * THIS IS THE MAIN FIX.
+         *
+         * Backend:
+         *     package_performance
+         *
+         * Old frontend:
+         *     packages
+         *
+         * Always make `package_performance` a real array.
+         */
+        package_performance:
+          normalizePackages(
+            rawData?.package_performance,
+          ),
+
+        monthly_revenue:
+          normalizeMonthlyRevenue(
+            rawData?.monthly_revenue ??
+              rawData?.revenue_trend,
+          ),
+
+        payment_status:
+          normalizePaymentStatus(
+            rawData?.payment_status,
+          ),
+
+        recent_sales:
+          normalizeRecentSales(
+            rawData?.recent_sales,
+          ),
+
+        enrollment_report:
+          normalizeEnrollmentReport(
+            rawData?.enrollment_report,
+          ),
+
+        top_package:
+          rawData?.top_package ?? null,
+      };
+
+      setDashboard(normalizedData);
+
+      /*
+       * The current backend doesn't need to provide generated_at.
+       * Generate it client-side for the report footer.
+       */
+      setGeneratedAt(new Date().toISOString());
     } catch (err) {
       console.error(
         'Package sales dashboard error:',
-        err
+        err,
       );
 
       setError(
         err instanceof Error
           ? err.message
-          : 'Unable to load package sales information.'
+          : 'Unable to load package sales information.',
       );
     } finally {
       setLoading(false);
@@ -224,43 +549,100 @@ export default function PackageSalesPage() {
     }
   };
 
+  /* --------------------------------------------------------------------------
+     LOAD ON PERIOD CHANGE
+  -------------------------------------------------------------------------- */
+
   useEffect(() => {
     loadDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [months]);
 
-  const maxMonthlyRevenue = useMemo(() => {
-    if (!dashboard?.monthly_revenue?.length) {
-      return 1;
-    }
+  /* --------------------------------------------------------------------------
+     SAFE ARRAYS
+  -------------------------------------------------------------------------- */
 
-    return Math.max(
-      ...dashboard.monthly_revenue.map(
-        (item) => item.revenue
-      ),
-      1
-    );
-  }, [dashboard]);
-
-  const maxPackageRevenue = useMemo(() => {
-    if (!dashboard?.packages?.length) {
-      return 1;
-    }
-
-    return Math.max(
-      ...dashboard.packages.map(
-        (item) => item.revenue
-      ),
-      1
-    );
-  }, [dashboard]);
-
-  const sortedPackages = useMemo(() => {
+  const packages = useMemo(() => {
     if (!dashboard) return [];
 
-    return [...dashboard.packages].sort(
-      (a, b) => b.revenue - a.revenue
+    return normalizePackages(
+      dashboard.package_performance,
     );
   }, [dashboard]);
+
+  const monthlyRevenue = useMemo(() => {
+    if (!dashboard) return [];
+
+    return normalizeMonthlyRevenue(
+      dashboard.monthly_revenue,
+    );
+  }, [dashboard]);
+
+  const paymentStatus = useMemo(() => {
+    if (!dashboard) return [];
+
+    return normalizePaymentStatus(
+      dashboard.payment_status,
+    );
+  }, [dashboard]);
+
+  const recentSales = useMemo(() => {
+    if (!dashboard) return [];
+
+    return normalizeRecentSales(
+      dashboard.recent_sales,
+    );
+  }, [dashboard]);
+
+  const enrollmentReport = useMemo(() => {
+    if (!dashboard) return [];
+
+    return normalizeEnrollmentReport(
+      dashboard.enrollment_report,
+    );
+  }, [dashboard]);
+
+  /* --------------------------------------------------------------------------
+     CHART VALUES
+  -------------------------------------------------------------------------- */
+
+  const maxMonthlyRevenue = useMemo(() => {
+    if (!monthlyRevenue.length) {
+      return 1;
+    }
+
+    return Math.max(
+      ...monthlyRevenue.map(
+        (item) => Number(item.revenue) || 0,
+      ),
+      1,
+    );
+  }, [monthlyRevenue]);
+
+  const maxPackageRevenue = useMemo(() => {
+    if (!packages.length) {
+      return 1;
+    }
+
+    return Math.max(
+      ...packages.map(
+        (item) => Number(item.revenue) || 0,
+      ),
+      1,
+    );
+  }, [packages]);
+
+  const sortedPackages = useMemo(() => {
+    return [...packages].sort(
+      (a, b) =>
+        Number(b.revenue || 0) -
+        Number(a.revenue || 0),
+    );
+  }, [packages]);
+
+  /* --------------------------------------------------------------------------
+     LOADING
+  -------------------------------------------------------------------------- */
 
   if (loading) {
     return (
@@ -275,6 +657,10 @@ export default function PackageSalesPage() {
       </div>
     );
   }
+
+  /* --------------------------------------------------------------------------
+     ERROR
+  -------------------------------------------------------------------------- */
 
   if (error) {
     return (
@@ -296,7 +682,7 @@ export default function PackageSalesPage() {
               Unable to Load Sales Dashboard
             </h1>
 
-            <p className="mx-auto mt-2 max-w-xl text-sm text-rose-700">
+            <p className="mx-auto mt-2 max-w-xl break-words text-sm text-rose-700">
               {error}
             </p>
 
@@ -318,13 +704,19 @@ export default function PackageSalesPage() {
     return null;
   }
 
+  /* ==========================================================================
+     RENDER
+  ========================================================================== */
+
   return (
     <div className="min-h-screen bg-[#FAF8F3] px-4 py-8 font-sans text-stone-800 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
 
-        {/* Header */}
-        <header className="rounded-2xl border border-stone-200 border-t-4 border-t-[#1F3A5C] bg-white p-6 shadow-sm">
+        {/* ==================================================================
+            HEADER
+        ================================================================== */}
 
+        <header className="rounded-2xl border border-stone-200 border-t-4 border-t-[#1F3A5C] bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
             <div>
@@ -349,7 +741,7 @@ export default function PackageSalesPage() {
               </div>
 
               <h1 className="mt-3 font-serif text-3xl font-bold text-[#16293F]">
-                Packege Sells
+                Package Sells
               </h1>
 
               <p className="mt-1 max-w-2xl text-xs leading-relaxed text-stone-500">
@@ -361,12 +753,13 @@ export default function PackageSalesPage() {
 
             <div className="flex flex-wrap items-center gap-3">
 
+              {/* PERIOD */}
               <div className="relative">
                 <select
                   value={months}
                   onChange={(event) =>
                     setMonths(
-                      Number(event.target.value)
+                      Number(event.target.value),
                     )
                   }
                   className="appearance-none rounded-lg border border-stone-300 bg-white py-2 pl-3 pr-9 text-xs font-bold text-stone-600 outline-none focus:border-[#1F3A5C]"
@@ -374,23 +767,24 @@ export default function PackageSalesPage() {
                   <option value={3}>
                     Last 3 Months
                   </option>
+
                   <option value={6}>
                     Last 6 Months
                   </option>
+
                   <option value={12}>
                     Last 12 Months
                   </option>
+
                   <option value={24}>
                     Last 24 Months
-                  </option>
-                  <option value={36}>
-                    Last 36 Months
                   </option>
                 </select>
 
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400" />
               </div>
 
+              {/* REFRESH */}
               <button
                 type="button"
                 onClick={() => loadDashboard(true)}
@@ -404,16 +798,20 @@ export default function PackageSalesPage() {
                       : ''
                   }`}
                 />
+
                 Refresh
               </button>
-
             </div>
           </div>
         </header>
 
-        {/* KPI Cards */}
+        {/* ==================================================================
+            KPI CARDS
+        ================================================================== */}
+
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
 
+          {/* REVENUE */}
           <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
@@ -429,11 +827,12 @@ export default function PackageSalesPage() {
 
             <p className="mt-1 text-2xl font-bold text-[#16293F]">
               {formatCurrency(
-                dashboard.overview.total_revenue
+                dashboard.summary.total_revenue,
               )}
             </p>
           </div>
 
+          {/* SALES */}
           <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
@@ -449,11 +848,12 @@ export default function PackageSalesPage() {
 
             <p className="mt-1 text-2xl font-bold text-[#16293F]">
               {formatNumber(
-                dashboard.overview.total_sales
+                dashboard.summary.successful_sales,
               )}
             </p>
           </div>
 
+          {/* STUDENTS */}
           <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
@@ -469,11 +869,12 @@ export default function PackageSalesPage() {
 
             <p className="mt-1 text-2xl font-bold text-[#16293F]">
               {formatNumber(
-                dashboard.overview.unique_active_students
+                dashboard.summary.active_students,
               )}
             </p>
           </div>
 
+          {/* ACTIVE PACKAGES */}
           <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
@@ -489,11 +890,12 @@ export default function PackageSalesPage() {
 
             <p className="mt-1 text-2xl font-bold text-[#16293F]">
               {formatNumber(
-                dashboard.overview.active_packages
+                dashboard.summary.active_packages,
               )}
             </p>
           </div>
 
+          {/* TOTAL PACKAGES */}
           <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-700">
@@ -511,17 +913,20 @@ export default function PackageSalesPage() {
 
             <p className="mt-1 text-2xl font-bold text-[#16293F]">
               {formatNumber(
-                dashboard.overview.total_packages
+                dashboard.summary.total_packages,
               )}
             </p>
           </div>
 
         </section>
 
-        {/* Main Charts */}
+        {/* ==================================================================
+            CHARTS
+        ================================================================== */}
+
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
-          {/* Revenue Trend */}
+          {/* REVENUE TREND */}
           <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm xl:col-span-2">
 
             <div className="flex items-center justify-between">
@@ -542,7 +947,7 @@ export default function PackageSalesPage() {
 
                 <p className="text-sm font-bold text-emerald-800">
                   {formatCurrency(
-                    dashboard.overview.total_revenue
+                    dashboard.summary.total_revenue,
                   )}
                 </p>
               </div>
@@ -550,16 +955,25 @@ export default function PackageSalesPage() {
 
             <div className="mt-8 flex h-64 items-end gap-2 overflow-x-auto border-b border-stone-200 pb-0">
 
-              {dashboard.monthly_revenue.map(
-                (item) => {
+              {monthlyRevenue.length === 0 ? (
+                <div className="flex h-full w-full items-center justify-center">
+                  <p className="text-xs text-stone-400">
+                    No revenue data available.
+                  </p>
+                </div>
+              ) : (
+                monthlyRevenue.map((item) => {
+                  const revenue =
+                    Number(item.revenue) || 0;
+
                   const height =
-                    item.revenue === 0
+                    revenue === 0
                       ? 3
                       : Math.max(
                           8,
-                          (item.revenue /
+                          (revenue /
                             maxMonthlyRevenue) *
-                            100
+                            100,
                         );
 
                   return (
@@ -574,22 +988,20 @@ export default function PackageSalesPage() {
                           style={{
                             height: `${height}%`,
                           }}
-                          title={`${item.label}: ${formatCurrency(item.revenue)}`}
+                          title={`${item.label}: ${formatCurrency(revenue)}`}
                         />
 
                         <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#16293F] px-2 py-1 text-[9px] font-bold text-white group-hover:block">
-                          {formatCurrency(
-                            item.revenue
-                          )}
+                          {formatCurrency(revenue)}
                         </div>
                       </div>
 
                       <span className="mt-2 text-[9px] font-medium text-stone-400">
-                        {item.label.split(' ')[0]}
+                        {item.label}
                       </span>
                     </div>
                   );
-                }
+                })
               )}
 
             </div>
@@ -601,14 +1013,12 @@ export default function PackageSalesPage() {
 
               <span>
                 Updated{' '}
-                {formatDate(
-                  dashboard.generated_at
-                )}
+                {formatDate(generatedAt)}
               </span>
             </div>
           </div>
 
-          {/* Payment Status */}
+          {/* PAYMENT STATUS */}
           <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
 
             <h2 className="font-serif text-xl font-bold text-[#16293F]">
@@ -621,68 +1031,63 @@ export default function PackageSalesPage() {
 
             <div className="mt-6 space-y-4">
 
-              {dashboard.payment_status.length === 0 ? (
+              {paymentStatus.length === 0 ? (
                 <p className="py-8 text-center text-xs text-stone-400">
                   No payment records found.
                 </p>
               ) : (
-                dashboard.payment_status.map(
-                  (item) => {
-                    const successful =
-                      isSuccessfulStatus(
-                        item.status
-                      );
-
-                    const failed =
-                      isFailedStatus(
-                        item.status
-                      );
-
-                    const icon = successful ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    ) : failed ? (
-                      <XCircle className="h-4 w-4 text-rose-600" />
-                    ) : (
-                      <Clock3 className="h-4 w-4 text-amber-600" />
+                paymentStatus.map((item) => {
+                  const successful =
+                    isSuccessfulStatus(
+                      item.status,
                     );
 
-                    return (
-                      <div
-                        key={item.status}
-                        className="rounded-xl border border-stone-100 bg-stone-50 p-3"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {icon}
+                  const failed =
+                    isFailedStatus(
+                      item.status,
+                    );
 
-                            <span className="text-xs font-bold capitalize text-stone-700">
-                              {item.status}
-                            </span>
-                          </div>
+                  const icon = successful ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  ) : failed ? (
+                    <XCircle className="h-4 w-4 text-rose-600" />
+                  ) : (
+                    <Clock3 className="h-4 w-4 text-amber-600" />
+                  );
 
-                          <span className="text-xs font-bold text-stone-500">
-                            {formatNumber(
-                              item.count
-                            )}
+                  return (
+                    <div
+                      key={item.status}
+                      className="rounded-xl border border-stone-100 bg-stone-50 p-3"
+                    >
+                      <div className="flex items-center justify-between">
+
+                        <div className="flex items-center gap-2">
+                          {icon}
+
+                          <span className="text-xs font-bold capitalize text-stone-700">
+                            {String(item.status || 'UNKNOWN').toLowerCase()}
                           </span>
                         </div>
 
-                        <p className="mt-2 text-xs font-semibold text-stone-500">
-                          {formatCurrency(
-                            item.amount
-                          )}
-                        </p>
+                        <span className="text-xs font-bold text-stone-500">
+                          {formatNumber(item.count)}
+                        </span>
+
                       </div>
-                    );
-                  }
-                )
+                    </div>
+                  );
+                })
               )}
 
             </div>
           </div>
         </section>
 
-        {/* Package Performance */}
+        {/* ==================================================================
+            PACKAGE PERFORMANCE
+        ================================================================== */}
+
         <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -724,16 +1129,24 @@ export default function PackageSalesPage() {
             ) : (
               sortedPackages.map((pkg) => {
 
+                const revenue =
+                  Number(pkg.revenue) || 0;
+
                 const revenuePercent =
                   Math.max(
                     0,
                     Math.min(
                       100,
-                      (pkg.revenue /
+                      (revenue /
                         maxPackageRevenue) *
-                        100
-                    )
+                        100,
+                    ),
                   );
+
+                const packageType =
+                  pkg.tier ||
+                  pkg.expiry_type ||
+                  'PACKAGE';
 
                 return (
                   <div
@@ -743,8 +1156,11 @@ export default function PackageSalesPage() {
 
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
 
+                      {/* PACKAGE */}
                       <div className="min-w-0 lg:w-64">
+
                         <div className="flex items-center gap-2">
+
                           <Package className="h-4 w-4 text-[#1F3A5C]" />
 
                           <h3 className="truncate text-sm font-bold text-[#16293F]">
@@ -762,26 +1178,30 @@ export default function PackageSalesPage() {
                               ? 'ACTIVE'
                               : 'INACTIVE'}
                           </span>
+
                         </div>
 
                         <p className="mt-1 text-[10px] text-stone-400">
-                          {pkg.tier} ·{' '}
-                          {pkg.validity_days} days
+                          {packageType}
+                          {pkg.validity_days != null
+                            ? ` · ${pkg.validity_days} days`
+                            : ''}
                         </p>
                       </div>
 
+                      {/* REVENUE */}
                       <div className="flex-1">
 
                         <div className="mb-2 flex items-center justify-between">
+
                           <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
                             Revenue
                           </span>
 
                           <span className="text-sm font-bold text-[#16293F]">
-                            {formatCurrency(
-                              pkg.revenue
-                            )}
+                            {formatCurrency(revenue)}
                           </span>
+
                         </div>
 
                         <div className="h-2 overflow-hidden rounded-full bg-stone-100">
@@ -794,6 +1214,7 @@ export default function PackageSalesPage() {
                         </div>
                       </div>
 
+                      {/* STATS */}
                       <div className="grid grid-cols-3 gap-5 text-right">
 
                         <div>
@@ -802,9 +1223,7 @@ export default function PackageSalesPage() {
                           </p>
 
                           <p className="mt-1 text-sm font-bold text-stone-700">
-                            {formatNumber(
-                              pkg.sales_count
-                            )}
+                            {formatNumber(pkg.sales)}
                           </p>
                         </div>
 
@@ -815,7 +1234,7 @@ export default function PackageSalesPage() {
 
                           <p className="mt-1 text-sm font-bold text-emerald-700">
                             {formatNumber(
-                              pkg.active_students
+                              pkg.active_students,
                             )}
                           </p>
                         </div>
@@ -827,15 +1246,13 @@ export default function PackageSalesPage() {
 
                           <p className="mt-1 text-sm font-bold text-stone-700">
                             {formatNumber(
-                              pkg.total_students
+                              pkg.total_students,
                             )}
                           </p>
                         </div>
 
                       </div>
-
                     </div>
-
                   </div>
                 );
               })
@@ -844,7 +1261,10 @@ export default function PackageSalesPage() {
           </div>
         </section>
 
-        {/* Detailed Package Table */}
+        {/* ==================================================================
+            PACKAGE ENROLLMENT REPORT
+        ================================================================== */}
+
         <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
 
           <div className="border-b border-stone-200 p-6">
@@ -863,6 +1283,7 @@ export default function PackageSalesPage() {
 
               <thead className="bg-stone-50">
                 <tr>
+
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-stone-400">
                     Package
                   </th>
@@ -890,99 +1311,131 @@ export default function PackageSalesPage() {
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-stone-400">
                     Status
                   </th>
+
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-stone-100">
 
-                {sortedPackages.map((pkg) => (
-                  <tr
-                    key={pkg.id}
-                    className="transition hover:bg-stone-50"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1F3A5C]/10 text-[#1F3A5C]">
-                          <Package className="h-4 w-4" />
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-bold text-[#16293F]">
-                            {pkg.title}
-                          </p>
-
-                          <p className="text-[9px] text-stone-400">
-                            {pkg.tier}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-5 py-4 text-xs font-semibold text-stone-600">
-                      {formatCurrency(pkg.price)}
-                    </td>
-
-                    <td className="px-5 py-4 text-xs font-bold text-stone-700">
-                      {formatNumber(pkg.sales_count)}
-                    </td>
-
-                    <td className="px-5 py-4 text-xs font-bold text-emerald-700">
-                      {formatCurrency(pkg.revenue)}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">
-                        <Users className="h-3 w-3" />
-                        {formatNumber(
-                          pkg.active_students
-                        )}
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-4 text-xs font-semibold text-stone-500">
-                      {formatNumber(
-                        pkg.expired_students
-                      )}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${
-                          pkg.is_active
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-stone-100 text-stone-500'
-                        }`}
-                      >
-                        {pkg.is_active
-                          ? 'ACTIVE'
-                          : 'INACTIVE'}
-                      </span>
+                {sortedPackages.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-5 py-12 text-center text-xs text-stone-400"
+                    >
+                      No packages found.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  sortedPackages.map((pkg) => (
+                    <tr
+                      key={pkg.id}
+                      className="transition hover:bg-stone-50"
+                    >
+
+                      <td className="px-5 py-4">
+
+                        <div className="flex items-center gap-2">
+
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1F3A5C]/10 text-[#1F3A5C]">
+                            <Package className="h-4 w-4" />
+                          </div>
+
+                          <div>
+                            <p className="text-xs font-bold text-[#16293F]">
+                              {pkg.title}
+                            </p>
+
+                            <p className="text-[9px] text-stone-400">
+                              {pkg.tier ||
+                                pkg.expiry_type ||
+                                'PACKAGE'}
+                            </p>
+                          </div>
+
+                        </div>
+
+                      </td>
+
+                      <td className="px-5 py-4 text-xs font-semibold text-stone-600">
+                        {formatCurrency(pkg.price_inr)}
+                      </td>
+
+                      <td className="px-5 py-4 text-xs font-bold text-stone-700">
+                        {formatNumber(pkg.sales)}
+                      </td>
+
+                      <td className="px-5 py-4 text-xs font-bold text-emerald-700">
+                        {formatCurrency(pkg.revenue)}
+                      </td>
+
+                      <td className="px-5 py-4">
+
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">
+
+                          <Users className="h-3 w-3" />
+
+                          {formatNumber(
+                            pkg.active_students,
+                          )}
+
+                        </span>
+
+                      </td>
+
+                      <td className="px-5 py-4 text-xs font-semibold text-stone-500">
+                        {formatNumber(
+                          pkg.expired_students,
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4">
+
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${
+                            pkg.is_active
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-stone-100 text-stone-500'
+                          }`}
+                        >
+                          {pkg.is_active
+                            ? 'ACTIVE'
+                            : 'INACTIVE'}
+                        </span>
+
+                      </td>
+
+                    </tr>
+                  ))
+                )}
 
               </tbody>
             </table>
-
           </div>
         </section>
 
-        {/* Recent Sales */}
+        {/* ==================================================================
+            RECENT SALES
+        ================================================================== */}
+
         <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
 
           <div className="border-b border-stone-200 p-6">
+
             <div className="flex items-center justify-between">
+
               <div>
                 <h2 className="font-serif text-xl font-bold text-[#16293F]">
                   Recent Package Sales
                 </h2>
 
                 <p className="mt-1 text-xs text-stone-500">
-                  Latest Razorpay package transactions
+                  Latest package payment transactions
                 </p>
               </div>
 
               <ShoppingBag className="h-5 w-5 text-stone-300" />
+
             </div>
           </div>
 
@@ -992,6 +1445,7 @@ export default function PackageSalesPage() {
 
               <thead className="bg-stone-50">
                 <tr>
+
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-stone-400">
                     Student
                   </th>
@@ -1015,12 +1469,13 @@ export default function PackageSalesPage() {
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-stone-400">
                     Date
                   </th>
+
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-stone-100">
 
-                {dashboard.recent_sales.length === 0 ? (
+                {recentSales.length === 0 ? (
                   <tr>
                     <td
                       colSpan={6}
@@ -1030,120 +1485,150 @@ export default function PackageSalesPage() {
                     </td>
                   </tr>
                 ) : (
-                  dashboard.recent_sales.map(
-                    (sale) => {
-                      const successful =
-                        isSuccessfulStatus(
-                          sale.status
-                        );
+                  recentSales.map((sale) => {
 
-                      const failed =
-                        isFailedStatus(
-                          sale.status
-                        );
-
-                      return (
-                        <tr
-                          key={sale.id}
-                          className="transition hover:bg-stone-50"
-                        >
-                          <td className="px-5 py-4">
-                            <p className="text-xs font-bold text-[#16293F]">
-                              {sale.student_name}
-                            </p>
-
-                            <p className="mt-0.5 text-[9px] text-stone-400">
-                              {sale.student_email || '—'}
-                            </p>
-                          </td>
-
-                          <td className="px-5 py-4 text-xs font-semibold text-stone-600">
-                            {sale.package_title}
-                          </td>
-
-                          <td className="px-5 py-4 text-xs font-bold text-emerald-700">
-                            {formatCurrency(
-                              sale.amount
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-bold ${
-                                successful
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : failed
-                                    ? 'bg-rose-100 text-rose-700'
-                                    : 'bg-amber-100 text-amber-700'
-                              }`}
-                            >
-                              {successful ? (
-                                <CheckCircle2 className="h-3 w-3" />
-                              ) : failed ? (
-                                <XCircle className="h-3 w-3" />
-                              ) : (
-                                <Clock3 className="h-3 w-3" />
-                              )}
-
-                              {sale.status}
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4 font-mono text-[9px] text-stone-400">
-                            {sale.razorpay_order_id}
-                          </td>
-
-                          <td className="px-5 py-4 text-xs text-stone-500">
-                            {formatDate(
-                              sale.created_at
-                            )}
-                          </td>
-                        </tr>
+                    const successful =
+                      isSuccessfulStatus(
+                        sale.status,
                       );
-                    }
-                  )
+
+                    const failed =
+                      isFailedStatus(
+                        sale.status,
+                      );
+
+                    return (
+                      <tr
+                        key={sale.id}
+                        className="transition hover:bg-stone-50"
+                      >
+
+                        {/* STUDENT */}
+                        <td className="px-5 py-4">
+
+                          <p className="text-xs font-bold text-[#16293F]">
+                            {sale.student_name ||
+                              'Unknown Student'}
+                          </p>
+
+                          <p className="mt-0.5 text-[9px] text-stone-400">
+                            {sale.student_email ||
+                              '—'}
+                          </p>
+
+                        </td>
+
+                        {/* PACKAGE */}
+                        <td className="px-5 py-4 text-xs font-semibold text-stone-600">
+                          {sale.package_title ||
+                            `Package #${sale.package_id}`}
+                        </td>
+
+                        {/* AMOUNT */}
+                        <td className="px-5 py-4 text-xs font-bold text-emerald-700">
+                          {formatCurrency(
+                            sale.amount_inr,
+                          )}
+                        </td>
+
+                        {/* STATUS */}
+                        <td className="px-5 py-4">
+
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-bold ${
+                              successful
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : failed
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+
+                            {successful ? (
+                              <CheckCircle2 className="h-3 w-3" />
+                            ) : failed ? (
+                              <XCircle className="h-3 w-3" />
+                            ) : (
+                              <Clock3 className="h-3 w-3" />
+                            )}
+
+                            {String(
+                              sale.status ||
+                                'UNKNOWN',
+                            ).toUpperCase()}
+
+                          </span>
+
+                        </td>
+
+                        {/* ORDER */}
+                        <td className="px-5 py-4 font-mono text-[9px] text-stone-400">
+                          {sale.order_id || '—'}
+                        </td>
+
+                        {/* DATE */}
+                        <td className="px-5 py-4 text-xs text-stone-500">
+                          {formatDate(
+                            sale.created_at,
+                          )}
+                        </td>
+
+                      </tr>
+                    );
+                  })
                 )}
 
               </tbody>
             </table>
-
           </div>
         </section>
 
-        {/* Report Footer */}
+        {/* ==================================================================
+            REPORT FOOTER
+        ================================================================== */}
+
         <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
             <div className="flex items-center gap-3">
+
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1F3A5C]/10 text-[#1F3A5C]">
                 <BarChart3 className="h-4 w-4" />
               </div>
 
               <div>
+
                 <p className="text-xs font-bold text-[#16293F]">
                   Package Sales Report
                 </p>
 
                 <p className="text-[10px] text-stone-400">
-                  Revenue is calculated from successful Razorpay orders.
+                  Revenue is calculated from successful package payments.
                 </p>
+
               </div>
             </div>
 
-            <p className="font-mono text-[9px] text-stone-400">
-              Generated:{' '}
-              {formatDate(
-                dashboard.generated_at
+            <div className="text-right">
+
+              <p className="font-mono text-[9px] text-stone-400">
+                Generated:{' '}
+                {formatDate(generatedAt)}
+              </p>
+
+              {dashboard.sources && (
+                <p className="mt-1 font-mono text-[8px] text-stone-300">
+                  Source: {dashboard.sources.payments}
+                </p>
               )}
-            </p>
+
+            </div>
 
           </div>
-
         </section>
 
       </div>
     </div>
   );
 }
-
