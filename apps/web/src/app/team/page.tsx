@@ -356,7 +356,7 @@ export default function TeamPortalLandingPage() {
           {/* Admin Panel */}
           {isAdminOrSuper ? (
             <div
-              onClick={() => router.push('/admin')}
+              onClick={() => router.push('/ptz/admin')}
               className="group cursor-pointer space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-[#1F3A5C]"
             >
               <div className="flex items-center justify-between">
@@ -417,7 +417,7 @@ export default function TeamPortalLandingPage() {
           {/* Super Admin Panel */}
           {isSuper ? (
             <div
-              onClick={() => router.push('/admin/studio')}
+              onClick={() => router.push('/ptz/admin/studio')}
               className="group cursor-pointer space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-[#1F3A5C]"
             >
               <div className="flex items-center justify-between">
