@@ -51,17 +51,14 @@ export default function TeamPortalLandingPage() {
         // staff-role dependency and therefore acts as the
         // canonical Team Portal access check.
         // --------------------------------------------------
-        const response = await fetch(
-          `${apiBase}/team/hierarchy`,
-          {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/json',
-            },
-            cache: 'no-store',
-          }
-        );
+        const response = await fetch(`${apiBase}/team/hierarchy`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+          cache: 'no-store',
+        });
 
         // --------------------------------------------------
         // Authentication failed
@@ -128,8 +125,7 @@ export default function TeamPortalLandingPage() {
         let cachedUser: Partial<StaffUser> = {};
 
         try {
-          const rawUser =
-            localStorage.getItem('accqudo_user');
+          const rawUser = localStorage.getItem('accqudo_user');
 
           if (rawUser) {
             const parsed = JSON.parse(rawUser);
@@ -138,8 +134,7 @@ export default function TeamPortalLandingPage() {
               parsed &&
               typeof parsed === 'object'
             ) {
-              cachedUser =
-                parsed as Partial<StaffUser>;
+              cachedUser = parsed as Partial<StaffUser>;
             }
           }
         } catch {
@@ -169,9 +164,7 @@ export default function TeamPortalLandingPage() {
               '='
             );
 
-            const decoded = JSON.parse(
-              atob(padded)
-            );
+            const decoded = JSON.parse(atob(padded));
 
             tokenRole = String(
               decoded?.role || ''
@@ -256,14 +249,15 @@ export default function TeamPortalLandingPage() {
   // Role handling
   // --------------------------------------------------------
 
-  const roleUpper = String(
-    user?.role || ''
-  )
+  const roleUpper = String(user?.role || '')
     .toUpperCase()
     .trim();
 
   const isAdminOrSuper =
     roleUpper === 'ADMIN' ||
+    roleUpper === 'SUPER_ADMIN';
+
+  const isSuper =
     roleUpper === 'SUPER_ADMIN';
 
   // --------------------------------------------------------
@@ -413,6 +407,67 @@ export default function TeamPortalLandingPage() {
                 <p className="mt-1 text-xs leading-relaxed text-stone-400">
                   Restricted area. Team members do not have
                   privileges to visit the system administration
+                  panel.
+                </p>
+              </div>
+
+            </div>
+          )}
+
+          {/* Super Admin Panel */}
+          {isSuper ? (
+            <div
+              onClick={() => router.push('/admin/studio')}
+              className="group cursor-pointer space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-[#1F3A5C]"
+            >
+              <div className="flex items-center justify-between">
+
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 text-purple-700">
+                  <ShieldCheck className="h-6 w-6" />
+                </div>
+
+                <span className="flex items-center gap-1 text-xs font-bold text-purple-700 transition group-hover:translate-x-1">
+                  Access Super Admin
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
+
+              </div>
+
+              <div>
+                <h3 className="font-serif text-lg font-bold text-[#16293F]">
+                  Top Level System Administration Panel
+                </h3>
+
+                <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                  Manage user accounts, assign team roles,
+                  inspect global audit logs, and oversee
+                  financial subscriptions.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="cursor-not-allowed space-y-4 rounded-2xl border border-stone-200 bg-stone-100 p-6 opacity-75 shadow-sm">
+
+              <div className="flex items-center justify-between">
+
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-stone-200 text-stone-500">
+                  <Lock className="h-6 w-6" />
+                </div>
+
+                <span className="rounded bg-stone-200 px-2.5 py-1 text-[10px] font-bold uppercase text-stone-600">
+                  Super Admin Only
+                </span>
+
+              </div>
+
+              <div>
+                <h3 className="font-serif text-lg font-bold text-stone-600">
+                  Top Level System Administration Panel
+                </h3>
+
+                <p className="mt-1 text-xs leading-relaxed text-stone-400">
+                  Restricted area. Team members &amp; Admins do not have
+                  privileges to visit the Top Level system administration
                   panel.
                 </p>
               </div>
