@@ -660,7 +660,36 @@ const handleSolutionDiagramUpload = async (
     );
   };
 
+  // Only packages belonging to the currently selected exam can be attached.
+  // The backend enforces the same rule, so keeping the UI filtered prevents
+  // the 400 response caused by selecting a package from another exam.
+  const availablePackages = useMemo(() => {
+    const selectedExamId = Number(paperExamId);
+    if (!selectedExamId) return [];
+    return packages.filter((pkg) => Number(pkg.exam_id) === selectedExamId);
+  }, [packages, paperExamId]);
+
+  const handlePaperExamChange = (value: string) => {
+    setPaperExamId(value);
+
+    // Questions and packages are exam-specific. Clear the staged paper when
+    // the target exam changes so old content cannot be submitted accidentally.
+    setSelectedQuestions([]);
+    setSelectedPackageIds([]);
+  };
+
   const togglePackageAttachment = (pkgId: number) => {
+    const pkg = packages.find((item) => item.id === pkgId);
+    const selectedExamId = Number(paperExamId);
+
+    if (!pkg || !selectedExamId || Number(pkg.exam_id) !== selectedExamId) {
+      setBanner({
+        text: 'This package belongs to a different exam. Select a package from the current exam.',
+        type: 'error',
+      });
+      return;
+    }
+
     setSelectedPackageIds((prev) =>
       prev.includes(pkgId) ? prev.filter((p) => p !== pkgId) : [...prev, pkgId]
     );
@@ -668,52 +697,134 @@ const handleSolutionDiagramUpload = async (
 
   const totalPaperMarks = selectedQuestions.reduce((acc, curr) => acc + curr.marks, 0);
 
+  const formatApiDetail = (detail: unknown, fallback: string) => {
+    if (typeof detail === 'string' && detail.trim()) return detail;
+
+    if (detail && typeof detail === 'object') {
+      try {
+        const obj = detail as Record<string, unknown>;
+        if (typeof obj.message === 'string' && obj.message.trim()) {
+          const extras = Object.entries(obj)
+            .filter(([key]) => key !== 'message')
+            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
+            .join(' | ');
+          return extras ? `${obj.message} (${extras})` : obj.message;
+        }
+        return JSON.stringify(detail);
+      } catch {
+        return fallback;
+      }
+    }
+
+    return fallback;
+  };
+
   const handleAssemblePaper = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const examId = Number(paperExamId);
+    const title = paperTitle.trim();
+
+    if (!examId) {
+      setBanner({ text: 'Please select a target exam stream.', type: 'error' });
+      return;
+    }
+
+    if (!title) {
+      setBanner({ text: 'Please enter a test title.', type: 'error' });
+      return;
+    }
+
+    if (!Number.isFinite(paperDuration) || paperDuration <= 0) {
+      setBanner({ text: 'Duration must be greater than 0 minutes.', type: 'error' });
+      return;
+    }
+
     if (selectedQuestions.length === 0) {
       setBanner({ text: 'Select at least 1 question to assemble an exam paper.', type: 'error' });
+      return;
+    }
+
+    // Final client-side package validation before the request.
+    const invalidPackageIds = selectedPackageIds.filter((pkgId) => {
+      const pkg = packages.find((item) => item.id === pkgId);
+      return !pkg || Number(pkg.exam_id) !== examId;
+    });
+
+    if (invalidPackageIds.length > 0) {
+      setSelectedPackageIds((prev) =>
+        prev.filter((pkgId) => !invalidPackageIds.includes(pkgId))
+      );
+      setBanner({
+        text: 'One or more selected packages belong to a different exam. They were removed; please review the package selection.',
+        type: 'error',
+      });
       return;
     }
 
     setSubmittingPaper(true);
     setBanner(null);
 
-    // The backend assembler accepts a flat `question_ids` list.
-    // Ownership (`created_by` / `added_by`) is assigned server-side from
-    // the authenticated admin, so the browser must not send those fields.
+    // Send the richer question format so the backend preserves the exact
+    // canvas order and marks for every question.
     const payload = {
-      exam_id: parseInt(paperExamId) || 1,
-      title: paperTitle,
+      exam_id: examId,
+      title,
       duration_minutes: paperDuration,
-      instructions: { rules: paperInstructions },
-      question_ids: selectedQuestions.map((q) => q.question_id),
+      instructions: { rules: paperInstructions.trim() },
+      questions: selectedQuestions.map((q) => ({
+        question_id: q.question_id,
+        marks: q.marks,
+        negative_marks: q.negative_marks,
+      })),
       package_ids: selectedPackageIds,
     };
 
     try {
       const token = localStorage.getItem('accqudo_token') || localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error('Authentication token not found. Please log in again.');
+      }
+
       const res = await fetch(`${apiBase}/team/tests/assemble`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Paper assembly failed.');
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          formatApiDetail(data?.detail, `Paper assembly failed (HTTP ${res.status}).`)
+        );
+      }
 
       setBanner({
-        text: `Assembled "${data.title}" (Test #${data.test_id}) with ${data.question_count} questions. Total: ${totalPaperMarks.toFixed(2)} Marks.`,
+        text: `Assembled "${data.title}" (Test #${data.test_id}) with ${data.question_count} questions. Total: ${Number(data.total_marks ?? totalPaperMarks).toFixed(2)} Marks.`,
         type: 'success',
       });
+
       setPaperTitle('');
+      setPaperInstructions('');
       setSelectedQuestions([]);
       setSelectedPackageIds([]);
-      fetchInitialData();
+
+      await fetchInitialData();
     } catch (err: any) {
-      setBanner({ text: err.message, type: 'error' });
+      setBanner({
+        text: err?.message || 'Paper assembly failed.',
+        type: 'error',
+      });
     } finally {
       setSubmittingPaper(false);
     }
@@ -1234,7 +1345,7 @@ const handleSolutionDiagramUpload = async (
                 <label className="block text-xs font-semibold text-stone-500 mb-1">Target Exam Stream</label>
                 <select
                   value={paperExamId}
-                  onChange={(e) => setPaperExamId(e.target.value)}
+                  onChange={(e) => handlePaperExamChange(e.target.value)}
                   className="w-full rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-xs text-stone-800 focus:border-[#1F3A5C] focus:outline-none"
                   required
                 >
@@ -1287,29 +1398,40 @@ const handleSolutionDiagramUpload = async (
                   Link this paper to Packages:
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {packages.map((pkg) => {
-                    const isLinked = selectedPackageIds.includes(pkg.id);
-                    return (
-                      <button
-                        type="button"
-                        key={pkg.id}
-                        onClick={() => togglePackageAttachment(pkg.id)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
-                          isLinked
-                            ? 'bg-[#1F3A5C] text-white shadow-sm'
-                            : 'bg-stone-50 border border-stone-200 text-stone-500 hover:text-[#1F3A5C]'
-                        }`}
-                      >
-                        {isLinked ? '\u2713 ' : '+ '} {pkg.title}
-                      </button>
-                    );
-                  })}
-                </div>
+                  {!paperExamId ? (
+                    <span className="text-[10px] text-stone-400">
+                      Select an exam first.
+                    </span>
+                  ) : availablePackages.length === 0 ? (
+                    <span className="text-[10px] text-stone-400">
+                      No packages are configured for this exam.
+                    </span>
+                  ) : (
+                    availablePackages.map((pkg) => {
+                      const isLinked = selectedPackageIds.includes(pkg.id);
+                      return (
+                        <button
+                          type="button"
+                          key={pkg.id}
+                          onClick={() => togglePackageAttachment(pkg.id)}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                            isLinked
+                              ? 'bg-[#1F3A5C] text-white shadow-sm'
+                              : 'bg-stone-50 border border-stone-200 text-stone-500 hover:text-[#1F3A5C]'
+                          }`}
+                        >
+                          {isLinked ? '\u2713 ' : '+ '} {pkg.title}
+                        </button>
+                      );
+                    })
+                  )}
+              </div>
               </div>
 
               <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[10px] text-amber-800">
-                Paper assembly uses each question's stored default marks and negative marks.
-                The authenticated admin is recorded server-side as the paper creator and question adder.
+                Only packages belonging to the selected exam can be attached.
+                Paper assembly preserves each selected question's marks.
+                The authenticated admin is recorded server-side.
               </div>
 
               <div className="rounded-xl bg-[#1F3A5C]/5 border border-[#1F3A5C]/20 p-4 space-y-2">
