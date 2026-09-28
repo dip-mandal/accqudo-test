@@ -127,15 +127,66 @@ interface MemberDetail {
     label: string;
   };
   member: StaffMember;
+  summary: {
+    questions_created: number;
+    topics_created: number;
+    chapters_created: number;
+    subjects_created: number;
+    papers_assembled: number;
+    questions_added_to_papers: number;
+    package_paper_links: number;
+    packages_linked: number;
+  };
   questions: Array<{
     question_id: number;
-    question_type: string;
-    topic: string;
-    chapter: string;
-    subject: string;
-    exam: string | null;
+    question_type: string | null;
+    topic: { id: number; name: string };
+    chapter: { id: number; name: string };
+    subject: { id: number; name: string };
+    exam: { id: number | null; title: string | null; code: string | null };
     created_at: string | null;
   }>;
+  papers: Array<{
+    id: number;
+    title: string;
+    exam_id: number | null;
+    exam_title: string | null;
+    exam_code: string | null;
+    duration_minutes: number | null;
+    total_marks: number | null;
+    total_questions: number;
+    questions_added_by_me: number;
+    created_at: string | null;
+  }>;
+  collaborative_paper_additions: Array<{
+    test_question_id: number;
+    test_id: number;
+    test_title: string | null;
+    question_id: number;
+    order: number | null;
+    marks: number | null;
+    negative_marks: number | null;
+    topic: { id: number; name: string };
+    chapter: { id: number; name: string };
+    subject: { id: number; name: string };
+    period_filter_applied: boolean;
+  }>;
+  package_links: Array<{
+    package_id: number;
+    package_title: string | null;
+    test_id: number;
+    test_title: string | null;
+    exam_id: number | null;
+    created_by: number;
+    period_filter_applied: boolean;
+  }>;
+  scope: {
+    questions_and_papers: string;
+    test_question_additions: string;
+    package_test_links: string;
+  };
+  team_totals: DashboardData['team_totals'];
+  generated_at?: string;
 }
 
 const PERIODS: Array<{ key: PeriodKey; label: string }> = [
@@ -177,6 +228,9 @@ const dateTime = (value: string | null | undefined) => {
 
 const roleLabel = (role: string) =>
   String(role || '').replace(/_/g, ' ').toUpperCase();
+
+const safeName = (value: string | null | undefined, fallback = '—') =>
+  value?.trim() ? value : fallback;
 
 export default function TeamProgressPage() {
   const router = useRouter();
@@ -224,6 +278,14 @@ export default function TeamProgressPage() {
           cache: 'no-store',
         },
       );
+
+      if (response.status === 401) {
+        localStorage.removeItem('accqudo_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('accqudo_user');
+        router.replace('/login');
+        return;
+      }
 
       if (response.status === 401) {
         localStorage.removeItem('accqudo_token');
@@ -352,7 +414,11 @@ export default function TeamProgressPage() {
     }
 
     try {
-      setDownloading(filenameFallback);
+      setDownloading(
+        filenameFallback.includes('staff_')
+          ? `staff_${filenameFallback.split('_')[2]}`
+          : filenameFallback,
+      );
 
       const response = await fetch(url, {
         headers: {
@@ -360,6 +426,14 @@ export default function TeamProgressPage() {
           Accept: 'text/csv',
         },
       });
+
+      if (response.status === 401) {
+        localStorage.removeItem('accqudo_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('accqudo_user');
+        router.replace('/login');
+        return;
+      }
 
       if (response.status === 403) {
         router.replace('/team');
@@ -582,7 +656,9 @@ export default function TeamProgressPage() {
                   </h2>
                   <p className="mt-1 text-xs text-stone-500">
                     Contribution shares are calculated against the selected
-                    period&apos;s total staff activity.
+                    period&apos;s total staff activity. Paper additions and package
+                    links are lifetime counts because those relationship records
+                    do not carry a creation timestamp.
                   </p>
                 </div>
 
@@ -806,15 +882,21 @@ export default function TeamProgressPage() {
                                 Question #{question.question_id}
                               </span>
                               <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[9px] font-bold text-stone-500">
-                                {question.question_type}
+                                {safeName(question.question_type, 'Question')}
                               </span>
                             </div>
                             <div className="mt-1 text-xs font-semibold text-stone-700">
-                              {question.topic}
+                              {safeName(question.topic?.name)}
                             </div>
                             <div className="mt-0.5 text-[10px] text-stone-400">
-                              {question.chapter} · {question.subject}
+                              {safeName(question.chapter?.name)} · {safeName(question.subject?.name)}
                             </div>
+                            {question.exam?.title ? (
+                              <div className="mt-1 text-[9px] text-stone-400">
+                                Exam: {question.exam.title}
+                                {question.exam.code ? ` (${question.exam.code})` : ''}
+                              </div>
+                            ) : null}
                             <div className="mt-1 text-[9px] text-stone-400">
                               {dateTime(question.created_at)}
                             </div>
@@ -825,6 +907,82 @@ export default function TeamProgressPage() {
                           <p className="py-6 text-center text-xs text-stone-400">
                             No authored questions in this period.
                           </p>
+                        ) : null}
+
+                        {memberDetail && memberDetail.papers.length > 0 ? (
+                          <div className="mt-5 border-t border-stone-100 pt-4">
+                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                              Papers assembled
+                            </div>
+                            <div className="space-y-2">
+                              {memberDetail.papers.slice(0, 10).map((paper) => (
+                                <div
+                                  key={paper.id}
+                                  className="rounded-lg border border-stone-100 p-3"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-xs font-semibold text-[#16293F]">
+                                        {safeName(paper.title, `Paper #${paper.id}`)}
+                                      </div>
+                                      <div className="mt-1 text-[9px] text-stone-400">
+                                        {paper.exam_title || 'No exam'} · {number(paper.total_questions)} questions
+                                      </div>
+                                    </div>
+                                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+                                      +{number(paper.questions_added_by_me)}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {memberDetail && memberDetail.collaborative_paper_additions.length > 0 ? (
+                          <div className="mt-5 border-t border-stone-100 pt-4">
+                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                              Collaborative paper additions
+                            </div>
+                            <div className="space-y-2">
+                              {memberDetail.collaborative_paper_additions.slice(0, 10).map((addition) => (
+                                <div
+                                  key={addition.test_question_id}
+                                  className="rounded-lg border border-stone-100 p-3"
+                                >
+                                  <div className="text-xs font-semibold text-[#16293F]">
+                                    {safeName(addition.test_title, `Paper #${addition.test_id}`)}
+                                  </div>
+                                  <div className="mt-1 text-[9px] text-stone-400">
+                                    Question #{addition.question_id} · {safeName(addition.topic?.name)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {memberDetail && memberDetail.package_links.length > 0 ? (
+                          <div className="mt-5 border-t border-stone-100 pt-4">
+                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                              Package ↔ paper links
+                            </div>
+                            <div className="space-y-2">
+                              {memberDetail.package_links.slice(0, 10).map((link) => (
+                                <div
+                                  key={`${link.package_id}-${link.test_id}`}
+                                  className="rounded-lg border border-stone-100 p-3"
+                                >
+                                  <div className="text-xs font-semibold text-[#16293F]">
+                                    {safeName(link.package_title, `Package #${link.package_id}`)}
+                                  </div>
+                                  <div className="mt-1 text-[9px] text-stone-400">
+                                    {safeName(link.test_title, `Paper #${link.test_id}`)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         ) : null}
                       </div>
                     )}
@@ -869,7 +1027,10 @@ export default function TeamProgressPage() {
                     Package Sales Performance
                   </h2>
                   <p className="mt-1 text-xs text-stone-500">
-                    Sales, revenue, buyers, and subscription data for the selected period.
+                    Sales and revenue use the active payment source; subscription
+                    figures use available subscription records and safely fall
+                    back to successful payment users when subscription timestamps
+                    are unavailable.
                   </p>
                 </div>
 
