@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Download,
+  FileText,
   Lock,
   Package,
   RefreshCw,
@@ -125,6 +126,8 @@ interface MemberDetail {
   period: {
     key: PeriodKey;
     label: string;
+    start_date: string | null;
+    end_date: string;
   };
   member: StaffMember;
   summary: {
@@ -180,10 +183,61 @@ interface MemberDetail {
     created_by: number;
     period_filter_applied: boolean;
   }>;
+  academic_breakdown: Array<{
+    id: number | null;
+    title: string;
+    code: string | null;
+    contributed_questions: number;
+    total_questions: number;
+    contribution_percent: number;
+    subjects: Array<{
+      id: number;
+      name: string;
+      contributed_questions: number;
+      total_questions: number;
+      contribution_percent: number;
+      chapters: Array<{
+        id: number;
+        name: string;
+        contributed_questions: number;
+        total_questions: number;
+        contribution_percent: number;
+        topics: Array<{
+          id: number;
+          name: string;
+          contributed_questions: number;
+          total_questions: number;
+          contribution_percent: number;
+        }>;
+      }>;
+    }>;
+  }>;
+  question_breakdown: {
+    by_type: Array<{ label: string; count: number }>;
+    by_exam: Array<{ label: string; count: number }>;
+    by_subject: Array<{ label: string; count: number }>;
+    by_chapter: Array<{ label: string; count: number }>;
+    by_topic: Array<{ label: string; count: number }>;
+  };
+  package_contributions: Array<{
+    package_id: number;
+    package_title: string;
+    exam_id: number | null;
+    total_questions: number;
+    contributed_questions: number;
+    contribution_percent: number;
+    papers: Array<{
+      test_id: number;
+      total_questions: number;
+      contributed_questions: number;
+      contribution_percent: number;
+    }>;
+  }>;
   scope: {
     questions_and_papers: string;
     test_question_additions: string;
     package_test_links: string;
+    note?: string;
   };
   team_totals: DashboardData['team_totals'];
   generated_at?: string;
@@ -423,7 +477,7 @@ export default function TeamProgressPage() {
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Accept: 'text/csv',
+          Accept: '*/*',
         },
       });
 
@@ -464,7 +518,7 @@ export default function TeamProgressPage() {
   const downloadMember = (memberId: number) =>
     downloadUrl(
       `${apiBase}/team/progress/report/member/${memberId}/download?period=${period}`,
-      `accqudo_staff_${memberId}_${period}_progress.csv`,
+      `accqudo_staff_${memberId}_${period}_contribution_report.pdf`,
     );
 
   const downloadSales = () =>
@@ -758,7 +812,7 @@ export default function TeamProgressPage() {
                             <Download className="h-3.5 w-3.5" />
                             {downloading.includes(`staff_${member.id}`)
                               ? 'Downloading'
-                              : 'CSV'}
+                              : 'PDF'}
                           </button>
                         </td>
                       </tr>
@@ -817,174 +871,294 @@ export default function TeamProgressPage() {
               </div>
 
               <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <div>
                     <h2 className="font-serif text-xl font-bold text-[#16293F]">
-                      Selected Member
+                      Selected Member — Full Contribution
                     </h2>
                     <p className="mt-1 text-xs text-stone-500">
-                      Select a row above to inspect recent authored questions.
+                      Inspect exactly where the selected person contributed: academic hierarchy, papers, collaborative additions, and package links.
                     </p>
                   </div>
-                  <Users className="h-5 w-5 text-[#1F3A5C]" />
+                  <Users className="h-5 w-5 shrink-0 text-[#1F3A5C]" />
                 </div>
 
                 {!selectedMember ? (
                   <div className="mt-8 rounded-xl border border-dashed border-stone-200 p-8 text-center text-xs text-stone-400">
-                    Click a team member to open their work details.
+                    Click a team member to open their complete contribution report.
                   </div>
                 ) : (
                   <div className="mt-5">
                     <div className="rounded-xl bg-stone-50 p-4">
-                      <div className="font-semibold text-[#16293F]">
-                        {selectedMember.full_name || selectedMember.email}
-                      </div>
-                      <div className="mt-1 text-[10px] text-stone-500">
-                        {selectedMember.email} · {roleLabel(selectedMember.role)}
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="font-semibold text-[#16293F]">
+                            {selectedMember.full_name || selectedMember.email}
+                          </div>
+                          <div className="mt-1 text-[10px] text-stone-500">
+                            {selectedMember.email} · {roleLabel(selectedMember.role)} · Staff #{selectedMember.id}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void downloadMember(selectedMember.id)}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1F3A5C] px-3 py-2.5 text-[10px] font-bold text-white hover:opacity-90"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          {downloading.includes(`staff_${selectedMember.id}`) ? 'Generating PDF…' : 'Download Official PDF'}
+                        </button>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-2 gap-2">
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                         <MiniStat label="Questions" value={selectedMember.questions_created} />
                         <MiniStat label="Papers" value={selectedMember.papers_assembled} />
-                        <MiniStat
-                          label="Additions"
-                          value={selectedMember.questions_added_to_papers}
-                        />
-                        <MiniStat
-                          label="Package links"
-                          value={selectedMember.package_paper_links}
-                        />
+                        <MiniStat label="Additions" value={selectedMember.questions_added_to_papers} />
+                        <MiniStat label="Package links" value={selectedMember.package_paper_links} />
+                        <MiniStat label="Topics" value={selectedMember.topics_created} />
+                        <MiniStat label="Chapters" value={selectedMember.chapters_created} />
+                        <MiniStat label="Subjects" value={selectedMember.subjects_created} />
+                        <MiniStat label="Packages" value={selectedMember.packages_linked} />
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => void downloadMember(selectedMember.id)}
-                        className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#1F3A5C] px-3 py-2.5 text-xs font-bold text-white hover:opacity-90"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download {data.period.label} Staff Report
-                      </button>
                     </div>
 
                     {loadingMember ? (
-                      <div className="py-8 text-center text-xs text-stone-400">
-                        Loading member details...
+                      <div className="py-10 text-center text-xs text-stone-400">
+                        Loading complete member contribution details…
                       </div>
-                    ) : (
-                      <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
-                        {(memberDetail?.questions || []).slice(0, 25).map((question) => (
-                          <div
-                            key={question.question_id}
-                            className="rounded-lg border border-stone-100 p-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-[10px] font-bold text-[#1F3A5C]">
-                                Question #{question.question_id}
-                              </span>
-                              <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[9px] font-bold text-stone-500">
-                                {safeName(question.question_type, 'Question')}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-xs font-semibold text-stone-700">
-                              {safeName(question.topic?.name)}
-                            </div>
-                            <div className="mt-0.5 text-[10px] text-stone-400">
-                              {safeName(question.chapter?.name)} · {safeName(question.subject?.name)}
-                            </div>
-                            {question.exam?.title ? (
-                              <div className="mt-1 text-[9px] text-stone-400">
-                                Exam: {question.exam.title}
-                                {question.exam.code ? ` (${question.exam.code})` : ''}
-                              </div>
-                            ) : null}
-                            <div className="mt-1 text-[9px] text-stone-400">
-                              {dateTime(question.created_at)}
+                    ) : memberDetail ? (
+                      <div className="mt-5 space-y-5">
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <BreakdownCard title="Question types" items={memberDetail.question_breakdown.by_type} />
+                          <BreakdownCard title="Questions by subject" items={memberDetail.question_breakdown.by_subject} />
+                        </div>
+
+                        <div className="rounded-xl border border-stone-200 bg-white">
+                          <div className="border-b border-stone-100 px-4 py-3">
+                            <div className="text-xs font-bold uppercase tracking-wide text-stone-500">Academic contribution</div>
+                            <div className="mt-1 text-[10px] text-stone-400">
+                              Member questions versus contributor-attributed questions in the same topic and selected period.
                             </div>
                           </div>
-                        ))}
-
-                        {memberDetail && memberDetail.questions.length === 0 ? (
-                          <p className="py-6 text-center text-xs text-stone-400">
-                            No authored questions in this period.
-                          </p>
-                        ) : null}
-
-                        {memberDetail && memberDetail.papers.length > 0 ? (
-                          <div className="mt-5 border-t border-stone-100 pt-4">
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-stone-400">
-                              Papers assembled
-                            </div>
-                            <div className="space-y-2">
-                              {memberDetail.papers.slice(0, 10).map((paper) => (
-                                <div
-                                  key={paper.id}
-                                  className="rounded-lg border border-stone-100 p-3"
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <div className="text-xs font-semibold text-[#16293F]">
-                                        {safeName(paper.title, `Paper #${paper.id}`)}
+                          <div className="max-h-[620px] overflow-auto p-3">
+                            {memberDetail.academic_breakdown.length === 0 ? (
+                              <p className="py-8 text-center text-xs text-stone-400">No academic contribution in this period.</p>
+                            ) : (
+                              <div className="space-y-4">
+                                {memberDetail.academic_breakdown.map((exam) => (
+                                  <div key={`${exam.id ?? 'none'}-${exam.title}`} className="rounded-xl border border-stone-100">
+                                    <div className="flex flex-col gap-2 bg-stone-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                      <div>
+                                        <div className="text-sm font-bold text-[#16293F]">{exam.title}</div>
+                                        <div className="mt-0.5 text-[9px] text-stone-400">
+                                          {exam.code || 'No exam code'} · {number(exam.contributed_questions)} contributed / {number(exam.total_questions)} contributor-attributed questions
+                                        </div>
                                       </div>
-                                      <div className="mt-1 text-[9px] text-stone-400">
-                                        {paper.exam_title || 'No exam'} · {number(paper.total_questions)} questions
+                                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold text-emerald-700">
+                                        {exam.contribution_percent.toFixed(1)}%
+                                      </span>
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full min-w-[760px] text-left">
+                                        <thead className="text-[9px] uppercase tracking-wide text-stone-400">
+                                          <tr>
+                                            <th className="px-4 py-2">Subject</th>
+                                            <th className="px-4 py-2">Chapter</th>
+                                            <th className="px-4 py-2">Topic</th>
+                                            <th className="px-4 py-2">Mine</th>
+                                            <th className="px-4 py-2">Total</th>
+                                            <th className="px-4 py-2">Share</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-stone-100">
+                                          {exam.subjects.flatMap((subject) =>
+                                            subject.chapters.flatMap((chapter) =>
+                                              chapter.topics.map((topic) => (
+                                                <tr key={`${subject.id}-${chapter.id}-${topic.id}`} className="hover:bg-stone-50">
+                                                  <td className="px-4 py-2 text-[10px] font-semibold text-stone-700">{subject.name}</td>
+                                                  <td className="px-4 py-2 text-[10px] text-stone-600">{chapter.name}</td>
+                                                  <td className="px-4 py-2 text-[10px] text-stone-600">{topic.name}</td>
+                                                  <td className="px-4 py-2 text-[10px] font-bold text-[#1F3A5C]">{number(topic.contributed_questions)}</td>
+                                                  <td className="px-4 py-2 text-[10px] text-stone-500">{number(topic.total_questions)}</td>
+                                                  <td className="px-4 py-2">
+                                                    <div className="flex min-w-[100px] items-center gap-2">
+                                                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-100">
+                                                        <div className="h-full rounded-full bg-[#1F3A5C]" style={{ width: `${Math.min(100, topic.contribution_percent)}%` }} />
+                                                      </div>
+                                                      <span className="text-[9px] font-bold text-stone-600">{topic.contribution_percent.toFixed(1)}%</span>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              )),
+                                            ),
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-stone-200 bg-white">
+                          <div className="border-b border-stone-100 px-4 py-3">
+                            <div className="text-xs font-bold uppercase tracking-wide text-stone-500">Papers assembled</div>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[780px] text-left">
+                              <thead className="bg-stone-50 text-[9px] uppercase tracking-wide text-stone-400">
+                                <tr>
+                                  <th className="px-4 py-2">Paper</th>
+                                  <th className="px-4 py-2">Exam</th>
+                                  <th className="px-4 py-2">Questions</th>
+                                  <th className="px-4 py-2">Added by member</th>
+                                  <th className="px-4 py-2">Marks</th>
+                                  <th className="px-4 py-2">Created</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-stone-100">
+                                {memberDetail.papers.map((paper) => (
+                                  <tr key={paper.id}>
+                                    <td className="px-4 py-3 text-[10px] font-semibold text-[#16293F]">{safeName(paper.title, `Paper #${paper.id}`)}</td>
+                                    <td className="px-4 py-3 text-[10px] text-stone-500">{safeName(paper.exam_title)}</td>
+                                    <td className="px-4 py-3 text-[10px]">{number(paper.total_questions)}</td>
+                                    <td className="px-4 py-3 text-[10px] font-bold text-emerald-700">{number(paper.questions_added_by_me)}</td>
+                                    <td className="px-4 py-3 text-[10px]">{paper.total_marks ?? '—'}</td>
+                                    <td className="px-4 py-3 text-[9px] text-stone-400">{dateTime(paper.created_at)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {memberDetail.papers.length === 0 ? <p className="p-6 text-center text-xs text-stone-400">No papers in this period.</p> : null}
+                        </div>
+
+                        <div className="grid gap-5 lg:grid-cols-2">
+                          <div className="rounded-xl border border-stone-200 bg-white">
+                            <div className="border-b border-stone-100 px-4 py-3">
+                              <div className="text-xs font-bold uppercase tracking-wide text-stone-500">Collaborative paper additions</div>
+                              <div className="mt-1 text-[9px] text-stone-400">Lifetime relationship count — no creation timestamp is available.</div>
+                            </div>
+                            <div className="max-h-[420px] overflow-auto p-3">
+                              {memberDetail.collaborative_paper_additions.length === 0 ? (
+                                <p className="py-6 text-center text-xs text-stone-400">No additions found.</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {memberDetail.collaborative_paper_additions.map((addition) => (
+                                    <div key={addition.test_question_id} className="rounded-lg border border-stone-100 p-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <div className="text-xs font-semibold text-[#16293F]">{safeName(addition.test_title, `Paper #${addition.test_id}`)}</div>
+                                          <div className="mt-1 text-[9px] text-stone-500">Question #{addition.question_id} · {safeName(addition.subject?.name)} · {safeName(addition.chapter?.name)} · {safeName(addition.topic?.name)}</div>
+                                        </div>
+                                        <span className="rounded bg-emerald-50 px-2 py-1 text-[9px] font-bold text-emerald-700">Added</span>
                                       </div>
                                     </div>
-                                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
-                                      +{number(paper.questions_added_by_me)}
-                                    </span>
-                                  </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                           </div>
-                        ) : null}
 
-                        {memberDetail && memberDetail.collaborative_paper_additions.length > 0 ? (
-                          <div className="mt-5 border-t border-stone-100 pt-4">
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-stone-400">
-                              Collaborative paper additions
+                          <div className="rounded-xl border border-stone-200 bg-white">
+                            <div className="border-b border-stone-100 px-4 py-3">
+                              <div className="text-xs font-bold uppercase tracking-wide text-stone-500">Package contribution</div>
+                              <div className="mt-1 text-[9px] text-stone-400">Shows how much of each linked paper is made up of questions authored by this member.</div>
                             </div>
-                            <div className="space-y-2">
-                              {memberDetail.collaborative_paper_additions.slice(0, 10).map((addition) => (
-                                <div
-                                  key={addition.test_question_id}
-                                  className="rounded-lg border border-stone-100 p-3"
-                                >
-                                  <div className="text-xs font-semibold text-[#16293F]">
-                                    {safeName(addition.test_title, `Paper #${addition.test_id}`)}
-                                  </div>
-                                  <div className="mt-1 text-[9px] text-stone-400">
-                                    Question #{addition.question_id} · {safeName(addition.topic?.name)}
-                                  </div>
+                            <div className="max-h-[420px] overflow-auto p-3">
+                              {memberDetail.package_contributions.length === 0 ? (
+                                <p className="py-6 text-center text-xs text-stone-400">No package contribution found.</p>
+                              ) : (
+                                <div className="space-y-3">
+                                  {memberDetail.package_contributions.map((pkg) => (
+                                    <div key={pkg.package_id} className="rounded-lg border border-stone-100 p-3">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-xs font-semibold text-[#16293F]">{safeName(pkg.package_title, `Package #${pkg.package_id}`)}</div>
+                                        <span className="text-[10px] font-bold text-emerald-700">{pkg.contribution_percent.toFixed(1)}%</span>
+                                      </div>
+                                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100">
+                                        <div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.min(100, pkg.contribution_percent)}%` }} />
+                                      </div>
+                                      <div className="mt-2 text-[9px] text-stone-500">{number(pkg.contributed_questions)} contributed / {number(pkg.total_questions)} total questions</div>
+                                      <div className="mt-2 space-y-1">
+                                        {pkg.papers.map((paper) => (
+                                          <div key={paper.test_id} className="flex items-center justify-between text-[9px] text-stone-500">
+                                            <span>Paper #{paper.test_id}</span>
+                                            <span>{number(paper.contributed_questions)} / {number(paper.total_questions)} · {paper.contribution_percent.toFixed(1)}%</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                           </div>
-                        ) : null}
+                        </div>
 
-                        {memberDetail && memberDetail.package_links.length > 0 ? (
-                          <div className="mt-5 border-t border-stone-100 pt-4">
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-stone-400">
-                              Package ↔ paper links
-                            </div>
-                            <div className="space-y-2">
-                              {memberDetail.package_links.slice(0, 10).map((link) => (
-                                <div
-                                  key={`${link.package_id}-${link.test_id}`}
-                                  className="rounded-lg border border-stone-100 p-3"
-                                >
-                                  <div className="text-xs font-semibold text-[#16293F]">
-                                    {safeName(link.package_title, `Package #${link.package_id}`)}
-                                  </div>
-                                  <div className="mt-1 text-[9px] text-stone-400">
-                                    {safeName(link.test_title, `Paper #${link.test_id}`)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                        <div className="rounded-xl border border-stone-200 bg-white">
+                          <div className="border-b border-stone-100 px-4 py-3">
+                            <div className="text-xs font-bold uppercase tracking-wide text-stone-500">Package ↔ paper links</div>
+                            <div className="mt-1 text-[9px] text-stone-400">Lifetime/current relationship records created by this member.</div>
                           </div>
-                        ) : null}
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[650px] text-left">
+                              <thead className="bg-stone-50 text-[9px] uppercase tracking-wide text-stone-400">
+                                <tr>
+                                  <th className="px-4 py-2">Package</th>
+                                  <th className="px-4 py-2">Package ID</th>
+                                  <th className="px-4 py-2">Paper</th>
+                                  <th className="px-4 py-2">Paper ID</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-stone-100">
+                                {memberDetail.package_links.map((link) => (
+                                  <tr key={`${link.package_id}-${link.test_id}`}>
+                                    <td className="px-4 py-3 text-[10px] font-semibold text-[#16293F]">{safeName(link.package_title, `Package #${link.package_id}`)}</td>
+                                    <td className="px-4 py-3 text-[10px]">#{link.package_id}</td>
+                                    <td className="px-4 py-3 text-[10px] text-stone-600">{safeName(link.test_title, `Paper #${link.test_id}`)}</td>
+                                    <td className="px-4 py-3 text-[10px]">#{link.test_id}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {memberDetail.package_links.length === 0 ? <p className="p-6 text-center text-xs text-stone-400">No package links found.</p> : null}
+                        </div>
+
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Attribution scope</div>
+                          <p className="mt-1 text-[10px] leading-relaxed text-amber-900/80">
+                            {memberDetail.scope.note || 'Question and paper creation use the selected period. Paper additions and package links are lifetime/current because their relationship tables do not expose a creation timestamp.'}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-stone-200 bg-white">
+                          <div className="border-b border-stone-100 px-4 py-3">
+                            <div className="text-xs font-bold uppercase tracking-wide text-stone-500">Recent authored questions</div>
+                            <div className="mt-1 text-[9px] text-stone-400">The official PDF includes the complete question register; this panel shows the latest records for quick review.</div>
+                          </div>
+                          <div className="max-h-80 space-y-2 overflow-y-auto p-3">
+                            {(memberDetail.questions || []).slice(0, 40).map((question) => (
+                              <div key={question.question_id} className="rounded-lg border border-stone-100 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-[10px] font-bold text-[#1F3A5C]">Question #{question.question_id}</span>
+                                  <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[9px] font-bold text-stone-500">{safeName(question.question_type, 'Question')}</span>
+                                </div>
+                                <div className="mt-1 text-xs font-semibold text-stone-700">{safeName(question.topic?.name)}</div>
+                                <div className="mt-0.5 text-[10px] text-stone-400">{safeName(question.chapter?.name)} · {safeName(question.subject?.name)}</div>
+                                {question.exam?.title ? <div className="mt-1 text-[9px] text-stone-400">Exam: {question.exam.title}{question.exam.code ? ` (${question.exam.code})` : ''}</div> : null}
+                                <div className="mt-1 text-[9px] text-stone-400">{dateTime(question.created_at)}</div>
+                              </div>
+                            ))}
+                            {memberDetail.questions.length === 0 ? <p className="py-6 text-center text-xs text-stone-400">No authored questions in this period.</p> : null}
+                          </div>
+                        </div>
                       </div>
+                    ) : (
+                      <div className="py-8 text-center text-xs text-stone-400">Select a member to load their contribution details.</div>
                     )}
                   </div>
                 )}
@@ -1244,6 +1418,35 @@ function MetricCard({
         {value}
       </div>
       <div className="mt-1 text-[9px] text-stone-400">{detail}</div>
+    </div>
+  );
+}
+
+function BreakdownCard({ title, items }: { title: string; items: Array<{ label: string; count: number }> }) {
+  const total = items.reduce((sum, item) => sum + Number(item.count || 0), 0);
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white p-4">
+      <div className="text-xs font-bold uppercase tracking-wide text-stone-500">{title}</div>
+      <div className="mt-3 space-y-2">
+        {items.length === 0 ? (
+          <div className="py-5 text-center text-xs text-stone-400">No data.</div>
+        ) : (
+          items.slice(0, 12).map((item) => {
+            const share = total ? (Number(item.count) / total) * 100 : 0;
+            return (
+              <div key={item.label}>
+                <div className="flex items-center justify-between gap-3 text-[10px]">
+                  <span className="truncate font-semibold text-stone-700">{item.label}</span>
+                  <span className="shrink-0 font-bold text-stone-500">{number(item.count)} · {share.toFixed(1)}%</span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-stone-100">
+                  <div className="h-full rounded-full bg-[#1F3A5C]" style={{ width: `${Math.min(100, share)}%` }} />
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
