@@ -10,6 +10,7 @@ import {
   Lock,
   BarChart3,
   ShoppingBag,
+  TrendingUp,
 } from 'lucide-react';
 
 interface StaffUser {
@@ -473,6 +474,36 @@ export default function TeamPortalLandingPage() {
                 <p className="mt-1 text-xs leading-relaxed text-stone-500">
                   View package sales, purchase activity,
                   and related subscription information.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Team Progress - Super Admin Only */}
+          {isSuper ? (
+            <div
+              onClick={() => router.push('/team/progress')}
+              className="group cursor-pointer space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-[#1F3A5C]"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700">
+                  <TrendingUp className="h-6 w-6" />
+                </div>
+
+                <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 transition group-hover:translate-x-1">
+                  View Progress
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
+              </div>
+
+              <div>
+                <h3 className="font-serif text-lg font-bold text-[#16293F]">
+                  Team Progress &amp; Intelligence
+                </h3>
+
+                <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                  Super Admin view of team contributions, staff activity,
+                  package sales, revenue, and downloadable reports.
                 </p>
               </div>
             </div>
