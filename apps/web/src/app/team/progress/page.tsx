@@ -499,10 +499,31 @@ export default function TeamProgressPage() {
       }
 
       const blob = await response.blob();
+
+      // Prefer the filename supplied by the API. This prevents a PDF response
+      // from ever being saved with a stale ".csv" client-side filename.
+      const disposition = response.headers.get('content-disposition') || '';
+      const filenameMatch =
+        disposition.match(/filename\*=UTF-8''([^;]+)/i) ||
+        disposition.match(/filename="([^"]+)"/i) ||
+        disposition.match(/filename=([^;]+)/i);
+      const serverFilename = filenameMatch
+        ? decodeURIComponent(filenameMatch[1].trim())
+        : '';
+      const isPdfResponse = (response.headers.get('content-type') || '')
+        .toLowerCase()
+        .includes('application/pdf');
+
+      const downloadFilename =
+        serverFilename ||
+        (isPdfResponse
+          ? filenameFallback.replace(/\.csv$/i, '.pdf')
+          : filenameFallback);
+
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = objectUrl;
-      anchor.download = filenameFallback;
+      anchor.download = downloadFilename;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
