@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Source_Serif_4, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
 
@@ -340,7 +340,57 @@ export default function StudentDashboardPage() {
     );
   }
 
-  const enrolledTests = data?.enrolled_tests || [];
+  /*
+   * Build the candidate's enrolled-paper list from BOTH authoritative API sources:
+   *
+   * 1. /analytics/dashboard/me -> direct test enrollments
+   * 2. /admin/packages/all -> tests belonging to packages the candidate has
+   *    actually purchased
+   *
+   * The backend is still the source of truth for ownership. This frontend
+   * merge only prevents package-owned papers from disappearing when the
+   * analytics endpoint and package endpoint return the entitlement through
+   * different paths.
+   *
+   * No fallback/dummy papers are created here.
+   */
+  const enrolledTests = useMemo<TestItem[]>(() => {
+    const merged = new Map<number, TestItem>();
+
+    // Direct test enrollments returned by the dashboard endpoint.
+    for (const test of data?.enrolled_tests || []) {
+      if (test && Number.isFinite(Number(test.id))) {
+        merged.set(Number(test.id), {
+          ...test,
+          id: Number(test.id),
+        });
+      }
+    }
+
+    // Tests belonging to packages that the candidate actually owns.
+    // Never add tests from packages that are not marked as purchased.
+    for (const pkg of packages || []) {
+      if (!pkg?.is_purchased || !Array.isArray(pkg.tests)) continue;
+
+      for (const test of pkg.tests) {
+        if (!test || !Number.isFinite(Number(test.id))) continue;
+
+        const testId = Number(test.id);
+        if (!merged.has(testId)) {
+          merged.set(testId, {
+            id: testId,
+            title: test.title,
+            duration_minutes: Number(test.duration_minutes) || 0,
+            total_marks: Number(test.total_marks) || 0,
+            is_enrolled: true,
+          });
+        }
+      }
+    }
+
+    return Array.from(merged.values());
+  }, [data?.enrolled_tests, packages]);
+
   const history = data?.history || [];
 
   return (
@@ -513,9 +563,9 @@ export default function StudentDashboardPage() {
             <div>
               {enrolledTests.length === 0 ? (
                 <div className="text-center py-12 space-y-3">
-                  <p className="text-sm font-medium text-[#14213D]">You do not have any papers enrolled yet.</p>
+                  <p className="text-sm font-medium text-[#14213D]">You do not have any enrolled papers yet.</p>
                   <p className="text-xs text-[#4B5768] max-w-sm mx-auto">
-                    Unlock a complete examination package (GATE, JEE, NEET, UPSC) or individual mock tests from the catalog.
+                    Purchase an examination package or an individual mock test to unlock your papers.
                   </p>
                   <button
                     onClick={() => setActiveTab('packages')}
@@ -547,8 +597,8 @@ export default function StudentDashboardPage() {
                           className="mt-3 flex items-center gap-4 text-xs text-[#4B5768] font-medium"
                           style={{ fontFamily: 'var(--font-mono)' }}
                         >
-                          <span>⏱ {test.duration_minutes} Mins</span>
-                          <span>🎯 {test.total_marks} Marks</span>
+                          <span>⏱ {test.duration_minutes > 0 ? `${test.duration_minutes} Mins` : '—'}</span>
+                          <span>🎯 {test.total_marks > 0 ? `${test.total_marks} Marks` : '—'}</span>
                           <span>⚡ Full Proctoring</span>
                         </div>
                       </div>
