@@ -233,55 +233,31 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f4f7fb] px-4 py-8 sm:px-6 lg:px-8">
-      {/* Educational-platform background */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-indigo-200/40 blur-3xl" />
-        <div className="absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-sky-200/40 blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-[0.035]"
-          style={{
-            backgroundImage:
-              'linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px)',
-            backgroundSize: '32px 32px',
-          }}
-        />
-      </div>
+    <main className="min-h-screen bg-[#f5f7fa] px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-5xl items-center justify-center sm:min-h-[calc(100vh-5rem)]">
+        <div className="grid w-full overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] lg:grid-cols-[0.9fr_1.1fr]">
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center justify-center">
-        <div className="grid w-full overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_30px_80px_-35px_rgba(15,23,42,0.35)] lg:grid-cols-[0.92fr_1.08fr]">
-          {/* Brand / visual panel */}
-          <div className="relative hidden min-h-[720px] overflow-hidden bg-slate-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
-            <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
-            <div className="absolute -bottom-28 -left-20 h-80 w-80 rounded-full bg-sky-400/10 blur-3xl" />
+          {/* Brand panel */}
+          <section className="relative hidden min-h-[680px] overflow-hidden bg-[#0b1324] px-10 py-10 text-white lg:flex lg:flex-col lg:justify-between">
+            <div className="absolute inset-0 opacity-20">
+              <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full border border-blue-400/30" />
+              <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full border border-blue-400/20" />
+              <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full border border-slate-400/10" />
+            </div>
 
-            <div className="relative">
-              <div className="mb-8 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-400 shadow-lg shadow-indigo-950/40">
-                  <svg viewBox="0 0 32 32" className="h-6 w-6" fill="none" aria-hidden="true">
-                    <path
-                      d="M8 23.5 16 6l8 17.5"
-                      stroke="white"
-                      strokeWidth="3.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M11.2 17h9.6"
-                      stroke="white"
-                      strokeWidth="3.2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
+            <div className="relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#2563eb] shadow-lg shadow-blue-950/30">
+                  <span className="text-xl font-black text-white">A</span>
                 </div>
-                <span className="text-2xl font-black tracking-[-0.04em]">accqudo</span>
+                <span className="text-[25px] font-extrabold tracking-[-0.04em] text-white">accqudo</span>
               </div>
 
-              <div className="max-w-md">
-                <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-300">
+              <div className="mt-24 max-w-sm">
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-300">
                   Assessment &amp; Examination Engine
                 </p>
-                <h1 className="text-4xl font-black leading-tight tracking-[-0.04em] xl:text-5xl">
+                <h1 className="mt-5 text-[42px] font-extrabold leading-[1.08] tracking-[-0.04em] text-white">
                   Your preparation.
                   <br />
                   Your performance.
@@ -289,77 +265,67 @@ export default function AuthPage() {
               </div>
             </div>
 
-            {/* Exam-style visual */}
-            <div className="relative mt-12">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-5 shadow-2xl backdrop-blur-sm">
-                <div className="mb-5 flex items-center justify-between">
-                  <div className="flex gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-white/30" />
-                    <span className="h-2 w-2 rounded-full bg-white/20" />
-                    <span className="h-2 w-2 rounded-full bg-white/10" />
+            <div className="relative z-10">
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#111b30] p-5">
+                <div className="mb-5 flex items-center justify-between border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-slate-500" />
+                    <span className="h-2 w-2 rounded-full bg-slate-600" />
+                    <span className="h-2 w-2 rounded-full bg-slate-700" />
                   </div>
-                  <div className="h-2 w-20 rounded-full bg-white/10" />
+                  <span className="h-2 w-16 rounded-full bg-slate-700" />
                 </div>
 
                 <div className="space-y-3">
-                  <div className="h-3 w-3/4 rounded-full bg-white/15" />
-                  <div className="h-2 w-1/2 rounded-full bg-white/10" />
+                  <div className="h-2.5 w-3/4 rounded-full bg-slate-600" />
+                  <div className="h-2 w-1/2 rounded-full bg-slate-700" />
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div className="h-16 rounded-2xl border border-white/10 bg-white/[0.05]" />
-                    <div className="h-16 rounded-2xl border border-indigo-400/20 bg-indigo-500/10" />
-                    <div className="h-16 rounded-2xl border border-white/10 bg-white/[0.05]" />
-                    <div className="h-16 rounded-2xl border border-sky-400/20 bg-sky-400/10" />
+                  <div className="grid grid-cols-2 gap-3 pt-3">
+                    <div className="h-14 rounded-xl border border-white/10 bg-[#182338]" />
+                    <div className="h-14 rounded-xl border border-blue-500/30 bg-blue-500/10" />
+                    <div className="h-14 rounded-xl border border-white/10 bg-[#182338]" />
+                    <div className="h-14 rounded-xl border border-slate-600 bg-[#182338]" />
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">
-                    <div className="h-2 flex-1 rounded-full bg-white/10" />
-                    <div className="h-2 w-16 rounded-full bg-indigo-400/60" />
+                    <div className="h-1.5 flex-1 rounded-full bg-slate-700" />
+                    <div className="h-1.5 w-14 rounded-full bg-blue-500" />
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="relative mt-8 text-[11px] font-medium text-slate-500">
-              <span>accqudo</span>
+              <p className="mt-8 text-[11px] font-medium text-slate-500">accqudo</p>
             </div>
-          </div>
+          </section>
 
           {/* Authentication panel */}
-          <div className="flex min-h-[720px] items-center justify-center p-5 sm:p-8 lg:p-12">
-            <div className="w-full max-w-md">
+          <section className="flex min-h-[680px] items-center justify-center px-6 py-10 sm:px-10 lg:px-14">
+            <div className="w-full max-w-[410px]">
+
+              {/* Mobile brand */}
+              <div className="mb-9 text-center lg:hidden">
+                <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[#2563eb]">
+                  <span className="text-xl font-black text-white">A</span>
+                </div>
+                <span className="text-2xl font-extrabold tracking-[-0.04em] text-[#0b1324]">accqudo</span>
+                <p className="mt-1 text-[11px] font-medium text-slate-500">Assessment &amp; Examination Engine</p>
+              </div>
+
               {/* Header */}
               <div className="text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-sky-500 shadow-lg shadow-indigo-200 lg:hidden">
-                  <svg viewBox="0 0 32 32" className="h-6 w-6" fill="none" aria-hidden="true">
-                    <path
-                      d="M8 23.5 16 6l8 17.5"
-                      stroke="white"
-                      strokeWidth="3.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M11.2 17h9.6"
-                      stroke="white"
-                      strokeWidth="3.2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </div>
-                <span className="text-3xl font-black tracking-[-0.05em] text-slate-950">accqudo</span>
+                <span className="text-[29px] font-extrabold tracking-[-0.05em] text-[#0b1324]">accqudo</span>
                 <p className="mt-1 text-xs font-medium text-slate-500">Assessment &amp; Examination Engine</p>
               </div>
 
               {/* Tab Selection */}
-              <div className="mt-7 grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100 p-1.5 text-xs font-bold text-slate-500">
+              <div className="mt-8 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
                 <button
                   type="button"
                   onClick={() => { setMode('login'); setStep('form'); setMessage(null); }}
-                  className={`rounded-xl py-2.5 transition-all ${
+                  className={`rounded-lg py-2.5 text-xs font-bold transition-all ${
                     mode === 'login'
-                      ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200'
-                      : 'hover:text-slate-900'
+                      ? 'bg-white text-[#1d4ed8] shadow-sm ring-1 ring-slate-200'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   Sign In
@@ -367,10 +333,10 @@ export default function AuthPage() {
                 <button
                   type="button"
                   onClick={() => { setMode('register'); setStep('form'); setMessage(null); }}
-                  className={`rounded-xl py-2.5 transition-all ${
+                  className={`rounded-lg py-2.5 text-xs font-bold transition-all ${
                     mode === 'register'
-                      ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200'
-                      : 'hover:text-slate-900'
+                      ? 'bg-white text-[#1d4ed8] shadow-sm ring-1 ring-slate-200'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   Register
@@ -380,7 +346,7 @@ export default function AuthPage() {
               {/* Notification Banner */}
               {message && (
                 <div
-                  className={`mt-4 rounded-2xl border px-4 py-3 text-xs font-medium ${
+                  className={`mt-5 rounded-xl border px-4 py-3 text-xs font-medium ${
                     message.type === 'success'
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                       : 'border-rose-200 bg-rose-50 text-rose-700'
@@ -394,24 +360,24 @@ export default function AuthPage() {
               {mode === 'login' && (
                 <form onSubmit={handleLogin} className="mt-7 space-y-5">
                   <div>
-                    <label className="text-xs font-bold text-slate-700">Email Address</label>
+                    <label className="text-xs font-semibold text-slate-700">Email Address</label>
                     <input
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@accqudo.internal"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                     />
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-700">Password</label>
+                      <label className="text-xs font-semibold text-slate-700">Password</label>
                       <button
                         type="button"
                         onClick={() => { setMode('forgot'); setStep('form'); setMessage(null); }}
-                        className="text-[11px] font-bold text-indigo-600 transition hover:text-indigo-800 hover:underline"
+                        className="text-[11px] font-semibold text-[#2563eb] transition hover:text-[#1d4ed8] hover:underline"
                       >
                         Forgot password?
                       </button>
@@ -422,14 +388,14 @@ export default function AuthPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 py-3.5 text-xs font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-indigo-200 transition hover:from-indigo-700 hover:to-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-xl bg-[#1d4ed8] py-3.5 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-md shadow-blue-100 transition hover:bg-[#1e40af] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? 'Authenticating...' : 'Sign In to Portal'}
                   </button>
@@ -440,45 +406,45 @@ export default function AuthPage() {
               {mode === 'register' && step === 'form' && (
                 <form onSubmit={handleRegisterSendOtp} className="mt-7 space-y-5">
                   <div>
-                    <label className="text-xs font-bold text-slate-700">Full Name</label>
+                    <label className="text-xs font-semibold text-slate-700">Full Name</label>
                     <input
                       type="text"
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="Candidate Full Name"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-700">Email Address</label>
+                    <label className="text-xs font-semibold text-slate-700">Email Address</label>
                     <input
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="student@accqudo.internal"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-700">Set Password</label>
+                    <label className="text-xs font-semibold text-slate-700">Set Password</label>
                     <input
                       type="password"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Min 8 characters"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 py-3.5 text-xs font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-indigo-200 transition hover:from-indigo-700 hover:to-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-xl bg-[#1d4ed8] py-3.5 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-md shadow-blue-100 transition hover:bg-[#1e40af] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? 'Sending Code...' : 'Get Email OTP Code'}
                   </button>
@@ -502,13 +468,13 @@ export default function AuthPage() {
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                     placeholder="123456"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-4 text-center font-mono text-2xl font-bold tracking-[10px] text-slate-900 outline-none transition placeholder:text-slate-300 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-4 text-center font-mono text-2xl font-bold tracking-[10px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                   />
 
                   <button
                     type="submit"
                     disabled={loading || otp.length !== 6}
-                    className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-3.5 text-xs font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-emerald-100 transition hover:from-emerald-600 hover:to-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-xl bg-[#047857] py-3.5 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-md shadow-emerald-100 transition hover:bg-[#065f46] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? 'Verifying...' : mode === 'register' ? 'Verify & Create Account' : 'Verify Reset Code'}
                   </button>
@@ -525,10 +491,10 @@ export default function AuthPage() {
                       type="button"
                       onClick={handleResendOtp}
                       disabled={countdown > 0 || resending}
-                      className={`font-bold transition ${
+                      className={`font-semibold transition ${
                         countdown > 0
                           ? 'cursor-not-allowed text-slate-300'
-                          : 'text-indigo-600 hover:text-indigo-800 hover:underline'
+                          : 'text-[#2563eb] hover:text-[#1d4ed8] hover:underline'
                       }`}
                     >
                       {resending ? 'Sending...' : countdown > 0 ? `Resend Code in ${countdown}s` : 'Resend Code'}
@@ -550,13 +516,13 @@ export default function AuthPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="student@accqudo.internal"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 py-3.5 text-xs font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-indigo-200 transition hover:from-indigo-700 hover:to-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-xl bg-[#1d4ed8] py-3.5 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-md shadow-blue-100 transition hover:bg-[#1e40af] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? 'Sending...' : 'Send Reset Code'}
                   </button>
@@ -567,20 +533,20 @@ export default function AuthPage() {
               {mode === 'forgot' && step === 'new_password' && (
                 <form onSubmit={handleResetPasswordFinal} className="mt-7 space-y-5">
                   <div>
-                    <label className="text-xs font-bold text-slate-700">Set New Password</label>
+                    <label className="text-xs font-semibold text-slate-700">Set New Password</label>
                     <input
                       type="password"
                       required
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Enter new strong password"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#2563eb] focus:ring-4 focus:ring-blue-50"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-3.5 text-xs font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-emerald-100 transition hover:from-emerald-600 hover:to-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-xl bg-[#047857] py-3.5 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-md shadow-emerald-100 transition hover:bg-[#065f46] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? 'Updating...' : 'Update Password & Return'}
                   </button>
@@ -606,15 +572,15 @@ export default function AuthPage() {
                 <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43-.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                 </svg>
                 Google Firebase Account
               </button>
             </div>
-          </div>
+          </section>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
