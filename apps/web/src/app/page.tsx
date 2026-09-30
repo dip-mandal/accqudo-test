@@ -476,10 +476,78 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer
-        className="px-6 py-10 text-center text-xs"
+        className="px-6 py-10"
         style={{ borderTop: `1px solid ${LINE}`, color: INK_MUTED }}
       >
-        <p>© 2026 Accqudo Assessment Platform. Built for India&rsquo;s high-stakes competitive examinations.</p>
+        <div className="mx-auto max-w-6xl">
+          <div className="grid gap-8 md:grid-cols-[1.3fr_1fr_1fr]">
+            <div>
+              <div
+                className="text-xl font-semibold"
+                style={{ fontFamily: 'var(--font-serif)', color: INK }}
+              >
+                accqudo<span style={{ color: BRASS }}>.</span>
+              </div>
+              <p className="mt-2 max-w-sm text-xs leading-relaxed">
+                Online exam-practice platform for structured test preparation, mock tests,
+                attempts and performance analysis.
+              </p>
+            </div>
+
+            <div>
+              <p
+                className="mb-3 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: INK }}
+              >
+                Legal
+              </p>
+              <div className="space-y-2 text-xs">
+                <Link className="block hover:opacity-70" href="/info/private-policy">
+                  Privacy Policy
+                </Link>
+                <Link className="block hover:opacity-70" href="/info/terms">
+                  Terms of Use
+                </Link>
+                <Link className="block hover:opacity-70" href="/info/refund-policy">
+                  Refund & Cancellation
+                </Link>
+                <Link className="block hover:opacity-70" href="/info/subscription-terms">
+                  Subscription Terms
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <p
+                className="mb-3 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: INK }}
+              >
+                Support
+              </p>
+              <div className="space-y-2 text-xs">
+                <Link className="block hover:opacity-70" href="/info/contact">
+                  Contact Accqudo
+                </Link>
+                <a className="block hover:opacity-70" href="mailto:accqudo@gmail.com">
+                  accqudo@gmail.com
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="mt-8 border-t pt-6 text-xs"
+            style={{ borderColor: LINE }}
+          >
+            <p>
+              © 2026 Accqudo. All rights reserved.
+            </p>
+            <p className="mt-2 max-w-4xl">
+              Accqudo is an independent educational test-preparation platform. It is not
+              affiliated with or endorsed by any examination authority unless expressly stated.
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   );
