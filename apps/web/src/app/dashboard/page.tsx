@@ -22,6 +22,42 @@ const plexMono = IBM_Plex_Mono({
   variable: '--font-mono',
 });
 
+interface TopicHierarchy {
+  id: number;
+  name: string;
+}
+
+interface ChapterHierarchy {
+  id: number;
+  name: string;
+  topics: TopicHierarchy[];
+}
+
+interface SubjectHierarchy {
+  id: number;
+  name: string;
+  chapters: ChapterHierarchy[];
+}
+
+interface ExamStreamHierarchy {
+  id: number;
+  title: string;
+  code?: string | null;
+}
+
+interface PackageHierarchy {
+  id: number;
+  title: string;
+  exam_stream?: ExamStreamHierarchy | null;
+}
+
+interface TestClassification {
+  exam_stream?: ExamStreamHierarchy | null;
+  packages: PackageHierarchy[];
+  subjects: SubjectHierarchy[];
+  has_topic_classification: boolean;
+}
+
 interface AttemptHistoryItem {
   attempt_id: number;
   test_id: number;
@@ -29,10 +65,11 @@ interface AttemptHistoryItem {
   score: number;
   total_marks: number;
   percentage: number;
-  accuracy: number;
+  accuracy: number | null;
   submitted_at: string | null;
   duration_taken_seconds: number;
   status: string;
+  classification?: TestClassification;
 }
 
 interface TestItem {
@@ -43,6 +80,7 @@ interface TestItem {
   price_inr?: number;
   is_enrolled?: boolean;
   category?: 'TOPIC_WISE' | 'CHAPTER_WISE' | 'SUBJECT_WISE' | 'FULL_LENGTH';
+  classification?: TestClassification;
 }
 
 interface PackageItem {
@@ -53,7 +91,7 @@ interface PackageItem {
   price_inr: number;
   validity_days: number;
   total_tests: number;
-  is_purchased?: boolean; // <--- Tracks package ownership
+  is_purchased?: boolean;
   tests: { id: number; title: string; duration_minutes: number; total_marks: number }[];
 }
 
@@ -66,10 +104,31 @@ interface DashboardData {
   total_attempts: number;
   tests_completed: number;
   average_score_percentage: number;
-  overall_accuracy: number;
+  overall_accuracy: number | null;
   history: AttemptHistoryItem[];
   enrolled_tests: TestItem[];
   store_catalog: TestItem[];
+}
+
+interface HierarchyTopicNode extends TopicHierarchy {
+  tests: TestItem[];
+}
+
+interface HierarchyChapterNode extends ChapterHierarchy {
+  topics: HierarchyTopicNode[];
+}
+
+interface HierarchySubjectNode extends SubjectHierarchy {
+  chapters: HierarchyChapterNode[];
+}
+
+interface HierarchyRootNode {
+  key: string;
+  title: string;
+  package?: PackageHierarchy;
+  exam_stream?: ExamStreamHierarchy | null;
+  subjects: HierarchySubjectNode[];
+  unclassifiedTests: TestItem[];
 }
 
 interface AppliedCoupon {
@@ -207,6 +266,242 @@ export default function StudentDashboardPage() {
   }, [data?.enrolled_tests, packages]);
 
   const history = data?.history || [];
+
+  /*
+   * Convert the flat API list into the user-facing academic hierarchy:
+   *
+   * Package / Exam Stream
+   *   └─ Subject
+   *       └─ Chapter
+   *           └─ Topic
+   *               └─ Test Paper
+   *
+   * A test can legitimately belong to multiple topics, so it is rendered
+   * under every real taxonomy path returned by the backend.
+   */
+  const enrolledHierarchy = useMemo<HierarchyRootNode[]>(() => {
+    const roots = new Map<string, HierarchyRootNode>();
+
+    const addTestToRoot = (
+      root: HierarchyRootNode,
+      test: TestItem,
+      subjectData?: SubjectHierarchy,
+    ) => {
+      if (!subjectData) {
+        if (!root.unclassifiedTests.some((item) => item.id === test.id)) {
+          root.unclassifiedTests.push(test);
+        }
+        return;
+      }
+
+      let subject = root.subjects.find((item) => item.id === subjectData.id);
+      if (!subject) {
+        subject = {
+          id: subjectData.id,
+          name: subjectData.name,
+          chapters: [],
+        };
+        root.subjects.push(subject);
+      }
+
+      for (const chapterData of subjectData.chapters || []) {
+        let chapter = subject.chapters.find((item) => item.id === chapterData.id);
+        if (!chapter) {
+          chapter = {
+            id: chapterData.id,
+            name: chapterData.name,
+            topics: [],
+          };
+          subject.chapters.push(chapter);
+        }
+
+        for (const topicData of chapterData.topics || []) {
+          let topic = chapter.topics.find((item) => item.id === topicData.id);
+          if (!topic) {
+            topic = {
+              id: topicData.id,
+              name: topicData.name,
+              tests: [],
+            };
+            chapter.topics.push(topic);
+          }
+
+          if (!topic.tests.some((item) => item.id === test.id)) {
+            topic.tests.push(test);
+          }
+        }
+      }
+    };
+
+    for (const test of enrolledTests) {
+      const classification = test.classification;
+      const packagesForTest = classification?.packages || [];
+
+      // Purchased package is the highest-level ownership context.
+      // If there is no package, use the actual exam stream attached to Test.
+      const rootsForTest =
+        packagesForTest.length > 0
+          ? packagesForTest.map((pkg) => ({
+              key: `package:${pkg.id}`,
+              title: pkg.title,
+              package: pkg,
+              exam_stream: pkg.exam_stream || classification?.exam_stream || null,
+            }))
+          : [
+              {
+                key: `exam:${classification?.exam_stream?.id || 'direct'}`,
+                title: classification?.exam_stream?.title || 'Individual / Direct Access',
+                package: undefined,
+                exam_stream: classification?.exam_stream || null,
+              },
+            ];
+
+      for (const rootData of rootsForTest) {
+        let root = roots.get(rootData.key);
+
+        if (!root) {
+          root = {
+            key: rootData.key,
+            title: rootData.title,
+            package: rootData.package,
+            exam_stream: rootData.exam_stream,
+            subjects: [],
+            unclassifiedTests: [],
+          };
+          roots.set(rootData.key, root);
+        }
+
+        const subjects = classification?.subjects || [];
+
+        if (subjects.length === 0) {
+          addTestToRoot(root, test);
+        } else {
+          for (const subject of subjects) {
+            addTestToRoot(root, test, subject);
+          }
+        }
+      }
+    }
+
+    return Array.from(roots.values());
+  }, [enrolledTests]);
+
+  /*
+   * Attempt records use the same classification returned by the backend.
+   * This prevents the history tab from becoming another flat list.
+   */
+  const attemptHierarchy = useMemo<HierarchyRootNode[]>(() => {
+    const roots = new Map<string, HierarchyRootNode>();
+
+    const attemptTestMap = new Map<number, TestItem>();
+    for (const item of history) {
+      const existing = attemptTestMap.get(item.test_id);
+      if (!existing) {
+        attemptTestMap.set(item.test_id, {
+          id: item.test_id,
+          title: item.test_title,
+          duration_minutes: 0,
+          total_marks: item.total_marks,
+          classification: item.classification,
+        });
+      }
+    }
+
+    const attemptsByTest = new Map<number, AttemptHistoryItem[]>();
+    for (const item of history) {
+      const list = attemptsByTest.get(item.test_id) || [];
+      list.push(item);
+      attemptsByTest.set(item.test_id, list);
+    }
+
+    for (const test of attemptTestMap.values()) {
+      const classification = test.classification;
+      const packagesForTest = classification?.packages || [];
+
+      const rootsForTest =
+        packagesForTest.length > 0
+          ? packagesForTest.map((pkg) => ({
+              key: `package:${pkg.id}`,
+              title: pkg.title,
+              package: pkg,
+              exam_stream: pkg.exam_stream || classification?.exam_stream || null,
+            }))
+          : [
+              {
+                key: `exam:${classification?.exam_stream?.id || 'direct'}`,
+                title: classification?.exam_stream?.title || 'Individual / Direct Access',
+                package: undefined,
+                exam_stream: classification?.exam_stream || null,
+              },
+            ];
+
+      for (const rootData of rootsForTest) {
+        let root = roots.get(rootData.key);
+
+        if (!root) {
+          root = {
+            key: rootData.key,
+            title: rootData.title,
+            package: rootData.package,
+            exam_stream: rootData.exam_stream,
+            subjects: [],
+            unclassifiedTests: [],
+          };
+          roots.set(rootData.key, root);
+        }
+
+        const subjects = classification?.subjects || [];
+
+        if (subjects.length === 0) {
+          if (!root.unclassifiedTests.some((item) => item.id === test.id)) {
+            root.unclassifiedTests.push(test);
+          }
+        } else {
+          for (const subjectData of subjects) {
+            let subject = root.subjects.find((item) => item.id === subjectData.id);
+            if (!subject) {
+              subject = {
+                id: subjectData.id,
+                name: subjectData.name,
+                chapters: [],
+              };
+              root.subjects.push(subject);
+            }
+
+            for (const chapterData of subjectData.chapters || []) {
+              let chapter = subject.chapters.find((item) => item.id === chapterData.id);
+              if (!chapter) {
+                chapter = {
+                  id: chapterData.id,
+                  name: chapterData.name,
+                  topics: [],
+                };
+                subject.chapters.push(chapter);
+              }
+
+              for (const topicData of chapterData.topics || []) {
+                let topic = chapter.topics.find((item) => item.id === topicData.id);
+                if (!topic) {
+                  topic = {
+                    id: topicData.id,
+                    name: topicData.name,
+                    tests: [],
+                  };
+                  chapter.topics.push(topic);
+                }
+
+                if (!topic.tests.some((item) => item.id === test.id)) {
+                  topic.tests.push(test);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return Array.from(roots.values());
+  }, [history]);
 
   // Handle Coupon Application
   const handleApplyCoupon = async (itemKey: string, packageId: number) => {
@@ -562,10 +857,12 @@ export default function StudentDashboardPage() {
 
           {/* TAB 1: MY ENROLLED PAPERS */}
           {activeTab === 'enrolled' && (
-            <div>
-              {enrolledTests.length === 0 ? (
+            <div className="space-y-4">
+              {enrolledHierarchy.length === 0 ? (
                 <div className="text-center py-12 space-y-3">
-                  <p className="text-sm font-medium text-[#14213D]">You do not have any enrolled papers yet.</p>
+                  <p className="text-sm font-medium text-[#14213D]">
+                    You do not have any enrolled papers yet.
+                  </p>
                   <p className="text-xs text-[#4B5768] max-w-sm mx-auto">
                     Purchase an examination package or an individual mock test to unlock your papers.
                   </p>
@@ -577,46 +874,192 @@ export default function StudentDashboardPage() {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {enrolledTests.map((test) => (
-                    <div
-                      key={test.id}
-                      className="border border-[#CBD3C7] bg-[#EEF2ED]/60 p-5 flex flex-col justify-between hover:border-[#14213D]/60 transition"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-sm font-medium text-[#14213D] leading-snug" style={{ fontFamily: 'var(--font-serif)' }}>
-                            {test.title}
-                          </h3>
-                          <span
-                            className="shrink-0 border border-[#2F6B4F]/40 text-[#2F6B4F] text-[10px] font-medium px-2 py-0.5"
-                            style={{ fontFamily: 'var(--font-mono)' }}
-                          >
-                            Active Pass
-                          </span>
-                        </div>
-                        <div
-                          className="mt-3 flex items-center gap-4 text-xs text-[#4B5768] font-medium"
-                          style={{ fontFamily: 'var(--font-mono)' }}
-                        >
-                          <span>⏱ {test.duration_minutes > 0 ? `${test.duration_minutes} Mins` : '—'}</span>
-                          <span>🎯 {test.total_marks > 0 ? `${test.total_marks} Marks` : '—'}</span>
-                          <span>⚡ Full Proctoring</span>
-                        </div>
-                      </div>
+                <>
+                  <div className="border border-[#CBD3C7] bg-[#EEF2ED]/70 px-4 py-3 text-xs text-[#4B5768]">
+                    <span className="font-semibold text-[#14213D]">Academic structure:</span>{' '}
+                    Package / Exam Stream → Subject → Chapter → Topic → Test Paper.
+                    Each paper appears under every real topic path attached to its questions.
+                  </div>
 
-                      <div className="mt-5 pt-3 border-t border-[#CBD3C7] flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[#2F6B4F]">Ready to Attempt</span>
-                        <button
-                          onClick={() => setConfirmTest(test)}
-                          className="bg-[#14213D] hover:opacity-90 px-4 py-2 text-xs font-semibold text-white transition"
-                        >
-                          Start Mock Exam &rarr;
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                  <div className="space-y-3">
+                    {enrolledHierarchy.map((root) => (
+                      <details
+                        key={root.key}
+                        open
+                        className="border border-[#CBD3C7] bg-[#F8FAF7]"
+                      >
+                        <summary className="cursor-pointer list-none px-5 py-4 hover:bg-[#EEF2ED]/60">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div>
+                              <div
+                                className="text-sm font-semibold text-[#14213D]"
+                                style={{ fontFamily: 'var(--font-serif)' }}
+                              >
+                                {root.title}
+                              </div>
+                              <div
+                                className="mt-1 text-[10px] uppercase tracking-wider text-[#4B5768]"
+                                style={{ fontFamily: 'var(--font-mono)' }}
+                              >
+                                {root.package ? 'Package / Test Series' : 'Exam Stream / Direct Access'}
+                              </div>
+                            </div>
+                            {root.exam_stream && (
+                              <span
+                                className="border border-[#14213D]/20 px-2.5 py-1 text-[10px] text-[#4B5768]"
+                                style={{ fontFamily: 'var(--font-mono)' }}
+                              >
+                                Exam: {root.exam_stream.title}
+                                {root.exam_stream.code ? ` (${root.exam_stream.code})` : ''}
+                              </span>
+                            )}
+                          </div>
+                        </summary>
+
+                        <div className="border-t border-[#CBD3C7] p-4 space-y-3">
+                          {root.subjects.length === 0 && root.unclassifiedTests.length === 0 ? (
+                            <p className="text-xs text-[#4B5768] py-4 text-center">
+                              No classified papers are available in this access group.
+                            </p>
+                          ) : (
+                            <>
+                              {root.subjects.map((subject) => (
+                                <details
+                                  key={`${root.key}:subject:${subject.id}`}
+                                  open
+                                  className="border border-[#CBD3C7] bg-white"
+                                >
+                                  <summary className="cursor-pointer list-none px-4 py-3">
+                                    <span className="text-xs font-semibold text-[#14213D]">
+                                      Subject: {subject.name}
+                                    </span>
+                                    <span
+                                      className="ml-2 text-[10px] text-[#4B5768]"
+                                      style={{ fontFamily: 'var(--font-mono)' }}
+                                    >
+                                      {subject.chapters.length} chapter{subject.chapters.length === 1 ? '' : 's'}
+                                    </span>
+                                  </summary>
+
+                                  <div className="border-t border-[#CBD3C7] p-3 space-y-2">
+                                    {subject.chapters.map((chapter) => (
+                                      <details
+                                        key={`${root.key}:chapter:${chapter.id}`}
+                                        open
+                                        className="border border-[#CBD3C7] bg-[#EEF2ED]/40"
+                                      >
+                                        <summary className="cursor-pointer list-none px-3 py-2.5">
+                                          <span className="text-xs font-medium text-[#14213D]">
+                                            Chapter: {chapter.name}
+                                          </span>
+                                        </summary>
+
+                                        <div className="border-t border-[#CBD3C7] p-3 space-y-2">
+                                          {chapter.topics.map((topic) => (
+                                            <details
+                                              key={`${root.key}:topic:${topic.id}`}
+                                              open
+                                              className="border border-[#CBD3C7] bg-[#F8FAF7]"
+                                            >
+                                              <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-3">
+                                                <span className="text-xs font-medium text-[#14213D]">
+                                                  Topic: {topic.name}
+                                                </span>
+                                                <span
+                                                  className="text-[10px] text-[#4B5768]"
+                                                  style={{ fontFamily: 'var(--font-mono)' }}
+                                                >
+                                                  {topic.tests.length} paper{topic.tests.length === 1 ? '' : 's'}
+                                                </span>
+                                              </summary>
+
+                                              <div className="border-t border-[#CBD3C7] p-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                                {topic.tests.map((test) => (
+                                                  <div
+                                                    key={`${root.key}:${topic.id}:test:${test.id}`}
+                                                    className="border border-[#CBD3C7] bg-[#EEF2ED]/50 p-4"
+                                                  >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                      <div>
+                                                        <h3
+                                                          className="text-sm font-medium text-[#14213D] leading-snug"
+                                                          style={{ fontFamily: 'var(--font-serif)' }}
+                                                        >
+                                                          {test.title}
+                                                        </h3>
+                                                        <div
+                                                          className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[#4B5768]"
+                                                          style={{ fontFamily: 'var(--font-mono)' }}
+                                                        >
+                                                          <span>⏱ {test.duration_minutes > 0 ? `${test.duration_minutes} mins` : 'Duration not set'}</span>
+                                                          <span>🎯 {test.total_marks > 0 ? `${test.total_marks} marks` : 'Marks not set'}</span>
+                                                        </div>
+                                                      </div>
+                                                      <span
+                                                        className="shrink-0 border border-[#2F6B4F]/40 text-[#2F6B4F] text-[10px] font-medium px-2 py-0.5"
+                                                        style={{ fontFamily: 'var(--font-mono)' }}
+                                                      >
+                                                        Active
+                                                      </span>
+                                                    </div>
+
+                                                    <div className="mt-4 pt-3 border-t border-[#CBD3C7] flex items-center justify-between gap-3">
+                                                      <span className="text-[10px] text-[#2F6B4F] font-semibold">
+                                                        Ready to Attempt
+                                                      </span>
+                                                      <button
+                                                        onClick={() => setConfirmTest(test)}
+                                                        className="bg-[#14213D] hover:opacity-90 px-3 py-1.5 text-[10px] font-semibold text-white transition"
+                                                      >
+                                                        Start Mock Exam →
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </details>
+                                          ))}
+                                        </div>
+                                      </details>
+                                    ))}
+                                  </div>
+                                </details>
+                              ))}
+
+                              {root.unclassifiedTests.length > 0 && (
+                                <details open className="border border-[#CBD3C7] bg-[#F8FAF7]">
+                                  <summary className="cursor-pointer list-none px-4 py-3">
+                                    <span className="text-xs font-semibold text-[#14213D]">
+                                      Unclassified / No Topic Mapping
+                                    </span>
+                                  </summary>
+                                  <div className="border-t border-[#CBD3C7] p-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                    {root.unclassifiedTests.map((test) => (
+                                      <div key={`${root.key}:unclassified:${test.id}`} className="border border-[#CBD3C7] bg-white p-4">
+                                        <h3 className="text-sm font-medium text-[#14213D]" style={{ fontFamily: 'var(--font-serif)' }}>
+                                          {test.title}
+                                        </h3>
+                                        <div className="mt-2 text-[10px] text-[#4B5768]" style={{ fontFamily: 'var(--font-mono)' }}>
+                                          ⏱ {test.duration_minutes > 0 ? `${test.duration_minutes} mins` : 'Duration not set'} · 🎯 {test.total_marks > 0 ? `${test.total_marks} marks` : 'Marks not set'}
+                                        </div>
+                                        <button
+                                          onClick={() => setConfirmTest(test)}
+                                          className="mt-4 bg-[#14213D] px-3 py-1.5 text-[10px] font-semibold text-white"
+                                        >
+                                          Start Mock Exam →
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -774,81 +1217,236 @@ export default function StudentDashboardPage() {
 
           {/* TAB 4: ATTEMPT HISTORY */}
           {activeTab === 'history' && (
-            <div>
+            <div className="space-y-4">
               {history.length === 0 ? (
                 <p className="text-xs text-[#4B5768] py-8 text-center">
                   No examination attempts recorded yet. Launch your first mock from the enrolled papers tab!
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-[#14213D]">
-                    <thead
-                      className="border-b border-[#CBD3C7] bg-[#EEF2ED] uppercase text-[#4B5768] font-medium"
-                      style={{ fontFamily: 'var(--font-mono)' }}
-                    >
-                      <tr>
-                        <th className="px-4 py-3">Mock Test</th>
-                        <th className="px-4 py-3">Score</th>
-                        <th className="px-4 py-3">Percentage</th>
-                        <th className="px-4 py-3">Status</th>
-                        <th className="px-4 py-3 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#CBD3C7]">
-                      {history.map((item) => (
-                        <tr key={item.attempt_id} className="hover:bg-[#F8FAF7] transition">
-                          <td className="px-4 py-3 font-medium text-[#14213D]" style={{ fontFamily: 'var(--font-serif)' }}>
-                            {item.test_title}
-                            <span
-                              className="block text-[10px] text-[#4B5768] font-normal"
-                              style={{ fontFamily: 'var(--font-mono)' }}
+                <>
+                  <div className="border border-[#CBD3C7] bg-[#EEF2ED]/70 px-4 py-3 text-xs text-[#4B5768]">
+                    <span className="font-semibold text-[#14213D]">Attempt structure:</span>{' '}
+                    Package / Exam Stream → Subject → Chapter → Topic → Test Paper → Attempt Records.
+                  </div>
+
+                  <div className="space-y-3">
+                    {attemptHierarchy.map((root) => (
+                      <details key={root.key} open className="border border-[#CBD3C7] bg-[#F8FAF7]">
+                        <summary className="cursor-pointer list-none px-5 py-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div>
+                              <div
+                                className="text-sm font-semibold text-[#14213D]"
+                                style={{ fontFamily: 'var(--font-serif)' }}
+                              >
+                                {root.title}
+                              </div>
+                              <div
+                                className="mt-1 text-[10px] uppercase tracking-wider text-[#4B5768]"
+                                style={{ fontFamily: 'var(--font-mono)' }}
+                              >
+                                {root.package ? 'Package / Test Series' : 'Exam Stream / Direct Access'}
+                              </div>
+                            </div>
+                            {root.exam_stream && (
+                              <span
+                                className="border border-[#14213D]/20 px-2.5 py-1 text-[10px] text-[#4B5768]"
+                                style={{ fontFamily: 'var(--font-mono)' }}
+                              >
+                                Exam: {root.exam_stream.title}
+                                {root.exam_stream.code ? ` (${root.exam_stream.code})` : ''}
+                              </span>
+                            )}
+                          </div>
+                        </summary>
+
+                        <div className="border-t border-[#CBD3C7] p-4 space-y-3">
+                          {root.subjects.map((subject) => (
+                            <details
+                              key={`${root.key}:subject:${subject.id}`}
+                              open
+                              className="border border-[#CBD3C7] bg-white"
                             >
-                              Attempt #{item.attempt_id}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-medium" style={{ fontFamily: 'var(--font-mono)' }}>
-                            {item.score.toFixed(2)} / {item.total_marks.toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-[#A9791F]" style={{ fontFamily: 'var(--font-mono)' }}>
-                            {item.percentage}%
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`px-2 py-0.5 border text-[10px] font-medium ${
-                                item.status === 'COMPLETED' || item.status === 'SUBMITTED'
-                                  ? 'border-[#2F6B4F]/40 text-[#2F6B4F]'
-                                  : 'border-[#A9791F]/40 text-[#A9791F]'
-                              }`}
-                              style={{ fontFamily: 'var(--font-mono)' }}
-                            >
-                              {item.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {item.status === 'COMPLETED' || item.status === 'SUBMITTED' || item.status === 'AUTO_SUBMITTED' ? (
-  <button
-    onClick={() => router.push(`/result/${item.attempt_id}`)}
-    className="border border-[#14213D]/30 px-3 py-1 text-xs font-medium text-[#14213D] hover:bg-[#14213D]/5 transition"
-  >
-    View Scorecard &rarr;
-  </button>
-) : (
-  <button
-    onClick={() => router.push(`/exam/${item.attempt_id}`)}
-    className="bg-[#A9791F] hover:bg-[#8F6519] px-3 py-1 text-xs font-medium text-white transition"
-  >
-    Resume &rarr;
-  </button>
-)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                              <summary className="cursor-pointer list-none px-4 py-3">
+                                <span className="text-xs font-semibold text-[#14213D]">
+                                  Subject: {subject.name}
+                                </span>
+                              </summary>
+
+                              <div className="border-t border-[#CBD3C7] p-3 space-y-2">
+                                {subject.chapters.map((chapter) => (
+                                  <details
+                                    key={`${root.key}:chapter:${chapter.id}`}
+                                    open
+                                    className="border border-[#CBD3C7] bg-[#EEF2ED]/40"
+                                  >
+                                    <summary className="cursor-pointer list-none px-3 py-2.5">
+                                      <span className="text-xs font-medium text-[#14213D]">
+                                        Chapter: {chapter.name}
+                                      </span>
+                                    </summary>
+
+                                    <div className="border-t border-[#CBD3C7] p-3 space-y-2">
+                                      {chapter.topics.map((topic) => (
+                                        <details
+                                          key={`${root.key}:topic:${topic.id}`}
+                                          open
+                                          className="border border-[#CBD3C7] bg-[#F8FAF7]"
+                                        >
+                                          <summary className="cursor-pointer list-none px-3 py-2.5">
+                                            <span className="text-xs font-medium text-[#14213D]">
+                                              Topic: {topic.name}
+                                            </span>
+                                          </summary>
+
+                                          <div className="border-t border-[#CBD3C7] overflow-x-auto">
+                                            <table className="w-full text-left text-xs text-[#14213D]">
+                                              <thead
+                                                className="border-b border-[#CBD3C7] bg-[#EEF2ED] uppercase text-[#4B5768] font-medium"
+                                                style={{ fontFamily: 'var(--font-mono)' }}
+                                              >
+                                                <tr>
+                                                  <th className="px-3 py-2.5">Test Paper</th>
+                                                  <th className="px-3 py-2.5">Attempt</th>
+                                                  <th className="px-3 py-2.5">Score</th>
+                                                  <th className="px-3 py-2.5">Percentage</th>
+                                                  <th className="px-3 py-2.5">Status</th>
+                                                  <th className="px-3 py-2.5 text-right">Action</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-[#CBD3C7]">
+                                                {topic.tests.flatMap((test) =>
+                                                  history
+                                                    .filter((item) => item.test_id === test.id)
+                                                    .map((item) => (
+                                                      <tr key={item.attempt_id} className="hover:bg-[#F8FAF7] transition">
+                                                        <td className="px-3 py-3">
+                                                          <div className="font-medium" style={{ fontFamily: 'var(--font-serif)' }}>
+                                                            {item.test_title}
+                                                          </div>
+                                                          <div className="mt-0.5 text-[10px] text-[#4B5768]" style={{ fontFamily: 'var(--font-mono)' }}>
+                                                            {item.submitted_at ? new Date(item.submitted_at).toLocaleString() : 'Not submitted'}
+                                                          </div>
+                                                        </td>
+                                                        <td className="px-3 py-3 font-medium" style={{ fontFamily: 'var(--font-mono)' }}>
+                                                          #{item.attempt_id}
+                                                        </td>
+                                                        <td className="px-3 py-3 font-medium" style={{ fontFamily: 'var(--font-mono)' }}>
+                                                          {item.score.toFixed(2)} / {item.total_marks.toFixed(2)}
+                                                        </td>
+                                                        <td className="px-3 py-3 font-semibold text-[#A9791F]" style={{ fontFamily: 'var(--font-mono)' }}>
+                                                          {item.percentage}%
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                          <span
+                                                            className={`px-2 py-0.5 border text-[10px] font-medium ${
+                                                              item.status === 'COMPLETED' ||
+                                                              item.status === 'SUBMITTED' ||
+                                                              item.status === 'AUTO_SUBMITTED'
+                                                                ? 'border-[#2F6B4F]/40 text-[#2F6B4F]'
+                                                                : 'border-[#A9791F]/40 text-[#A9791F]'
+                                                            }`}
+                                                            style={{ fontFamily: 'var(--font-mono)' }}
+                                                          >
+                                                            {item.status}
+                                                          </span>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-right">
+                                                          {item.status === 'COMPLETED' ||
+                                                          item.status === 'SUBMITTED' ||
+                                                          item.status === 'AUTO_SUBMITTED' ? (
+                                                            <button
+                                                              onClick={() => router.push(`/result/${item.attempt_id}`)}
+                                                              className="border border-[#14213D]/30 px-3 py-1 text-[10px] font-medium text-[#14213D] hover:bg-[#14213D]/5 transition"
+                                                            >
+                                                              View Scorecard →
+                                                            </button>
+                                                          ) : (
+                                                            <button
+                                                              onClick={() => router.push(`/exam/${item.attempt_id}`)}
+                                                              className="bg-[#A9791F] hover:bg-[#8F6519] px-3 py-1 text-[10px] font-medium text-white transition"
+                                                            >
+                                                              Resume →
+                                                            </button>
+                                                          )}
+                                                        </td>
+                                                      </tr>
+                                                    )),
+                                                )}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </details>
+                                      ))}
+                                    </div>
+                                  </details>
+                                ))}
+                              </div>
+                            </details>
+                          ))}
+
+                          {root.unclassifiedTests.length > 0 && (
+                            <details open className="border border-[#CBD3C7] bg-[#F8FAF7]">
+                              <summary className="cursor-pointer list-none px-4 py-3">
+                                <span className="text-xs font-semibold text-[#14213D]">
+                                  Unclassified / No Topic Mapping
+                                </span>
+                              </summary>
+                              <div className="border-t border-[#CBD3C7] overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                  <tbody className="divide-y divide-[#CBD3C7]">
+                                    {root.unclassifiedTests.flatMap((test) =>
+                                      history
+                                        .filter((item) => item.test_id === test.id)
+                                        .map((item) => (
+                                          <tr key={item.attempt_id}>
+                                            <td className="px-3 py-3">
+                                              <div className="font-medium" style={{ fontFamily: 'var(--font-serif)' }}>
+                                                {item.test_title}
+                                              </div>
+                                              <div className="text-[10px] text-[#4B5768]" style={{ fontFamily: 'var(--font-mono)' }}>
+                                                Attempt #{item.attempt_id}
+                                              </div>
+                                            </td>
+                                            <td className="px-3 py-3" style={{ fontFamily: 'var(--font-mono)' }}>
+                                              {item.score.toFixed(2)} / {item.total_marks.toFixed(2)} · {item.percentage}%
+                                            </td>
+                                            <td className="px-3 py-3 text-right">
+                                              {item.status === 'COMPLETED' ||
+                                              item.status === 'SUBMITTED' ||
+                                              item.status === 'AUTO_SUBMITTED' ? (
+                                                <button
+                                                  onClick={() => router.push(`/result/${item.attempt_id}`)}
+                                                  className="border border-[#14213D]/30 px-3 py-1 text-[10px]"
+                                                >
+                                                  View Scorecard →
+                                                </button>
+                                              ) : (
+                                                <button
+                                                  onClick={() => router.push(`/exam/${item.attempt_id}`)}
+                                                  className="bg-[#A9791F] px-3 py-1 text-[10px] text-white"
+                                                >
+                                                  Resume →
+                                                </button>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        )),
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}
+
         </div>
 
         {/* --- Anti-Cheat Pre-Flight Confirmation Modal --- */}
