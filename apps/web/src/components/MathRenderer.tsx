@@ -8,10 +8,11 @@ interface MathRendererProps {
   className?: string;
 }
 
-interface RenderLine {
-  type: 'text' | 'image';
+interface RenderSegment {
+  type: 'text' | 'image' | 'complex';
   content: string;
   alt?: string;
+  id?: string;
 }
 
 interface LatexRenderResponse {
@@ -22,9 +23,52 @@ interface LatexRenderResponse {
   contains_tikz?: boolean;
 }
 
+/**
+ * Detect LaTeX/TikZ environments that should be rendered by the
+ * authenticated backend renderer.
+ *
+ * IMPORTANT:
+ * We intentionally detect the actual TikZ environment rather than
+ * treating the entire question as complex LaTeX.
+ *
+ * This allows content such as:
+ *
+ *   A block has mass $5\,kg$.
+ *
+ *   \begin{tikzpicture}
+ *   ...
+ *   \end{tikzpicture}
+ *
+ *   Calculate the acceleration.
+ *
+ * to be rendered as:
+ *
+ *   normal text
+ *   +
+ *   TikZ SVG
+ *   +
+ *   normal text
+ */
+const TIKZ_BLOCK_REGEX =
+  /(?:\\(?:usetikzlibrary|usepackage)\s*\{[^{}]*\}\s*)*\\begin\s*\{\s*tikzpicture\s*\}[\s\S]*?\\end\s*\{\s*tikzpicture\s*\}/gi;
+
+/**
+ * Complete standalone LaTeX documents are still supported.
+ *
+ * These are sent to the backend as one document because the backend
+ * sanitizer is responsible for safely normalizing the document.
+ */
+const COMPLETE_LATEX_DOCUMENT_REGEX =
+  /\\documentclass\b[\s\S]*?\\begin\s*\{\s*document\s*\}[\s\S]*?\\end\s*\{\s*document\s*\}/i;
+
+/**
+ * Other complex commands that may require backend rendering when they
+ * appear outside a normal KaTeX expression.
+ *
+ * Most matrices, arrays, aligned blocks, cases, etc. are still handled
+ * naturally by KaTeX when they are inside $...$ or \[...\].
+ */
 const COMPLEX_LATEX_PATTERNS: RegExp[] = [
-  /\\begin\s*\{\s*tikzpicture\s*\}/i,
-  /\\end\s*\{\s*tikzpicture\s*\}/i,
   /\\usetikzlibrary\b/i,
   /\\tikz\b/i,
   /\\draw\b/i,
@@ -38,88 +82,209 @@ const COMPLEX_LATEX_PATTERNS: RegExp[] = [
   /\\shadedraw\b/i,
   /\\foreach\b/i,
   /\\matrix\b/i,
-  /\\begin\s*\{\s*array\s*\}/i,
-  /\\begin\s*\{\s*aligned\s*\}/i,
-  /\\begin\s*\{\s*cases\s*\}/i,
-  /\\begin\s*\{\s*align\*?\s*\}/i,
-  /\\begin\s*\{\s*gather\*?\s*\}/i,
 ];
 
 /**
- * Detect LaTeX that should be rendered by the backend instead of
- * ordinary browser KaTeX.
+ * Check whether the complete content contains a TikZ block.
+ */
+function containsTikz(content: string): boolean {
+  if (!content.trim()) {
+    return false;
+  }
+
+  TIKZ_BLOCK_REGEX.lastIndex = 0;
+  return TIKZ_BLOCK_REGEX.test(content);
+}
+
+/**
+ * Check whether content is a complete LaTeX document.
+ */
+function isCompleteLatexDocument(content: string): boolean {
+  return COMPLETE_LATEX_DOCUMENT_REGEX.test(content);
+}
+
+/**
+ * Check whether some complex backend LaTeX syntax exists.
  */
 function containsComplexLatex(content: string): boolean {
   if (!content.trim()) {
     return false;
   }
 
-  return COMPLEX_LATEX_PATTERNS.some((pattern) =>
-    pattern.test(content),
-  );
+  if (containsTikz(content)) {
+    return true;
+  }
+
+  if (isCompleteLatexDocument(content)) {
+    return true;
+  }
+
+  return COMPLEX_LATEX_PATTERNS.some((pattern) => pattern.test(content));
 }
 
 /**
- * Extract Markdown-style images from the content.
+ * Extract Markdown-style images.
  *
  * Example:
  *
  * ![Diagram](https://example.com/image.png)
  */
-function parseContent(content: string): RenderLine[] {
-  const lines: RenderLine[] = [];
+const MARKDOWN_IMAGE_REGEX =
+  /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
-  const imageRegex = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+/**
+ * Parse content into mixed rendering segments:
+ *
+ *   text
+ *   image
+ *   complex/TikZ
+ *
+ * The most important change from the previous implementation is that
+ * a TikZ block is isolated instead of sending the entire question to
+ * the backend.
+ */
+function parseMixedContent(content: string): RenderSegment[] {
+  if (!content.trim()) {
+    return [];
+  }
+
+  const segments: RenderSegment[] = [];
+
+  /**
+   * Complete standalone LaTeX documents are kept together.
+   *
+   * This preserves compatibility with the backend's document sanitizer.
+   */
+  if (isCompleteLatexDocument(content)) {
+    return [
+      {
+        type: 'complex',
+        content: content.trim(),
+        id: 'complete-latex-document',
+      },
+    ];
+  }
+
+  /**
+   * First split TikZ blocks from normal content.
+   */
+  const tikzParts: Array<{
+    start: number;
+    end: number;
+    content: string;
+  }> = [];
+
+  TIKZ_BLOCK_REGEX.lastIndex = 0;
+
+  let tikzMatch: RegExpExecArray | null;
+
+  while ((tikzMatch = TIKZ_BLOCK_REGEX.exec(content)) !== null) {
+    tikzParts.push({
+      start: tikzMatch.index,
+      end: tikzMatch.index + tikzMatch[0].length,
+      content: tikzMatch[0],
+    });
+  }
+
+  /**
+   * If there are no TikZ blocks, just parse Markdown images.
+   */
+  if (tikzParts.length === 0) {
+    return parseImagesOnly(content);
+  }
+
+  let cursor = 0;
+
+  for (const tikzPart of tikzParts) {
+    const before = content.slice(cursor, tikzPart.start);
+
+    if (before.trim()) {
+      segments.push(
+        ...parseImagesOnly(before, `text-${segments.length}`),
+      );
+    }
+
+    segments.push({
+      type: 'complex',
+      content: tikzPart.content.trim(),
+      id: `tikz-${segments.length}`,
+    });
+
+    cursor = tikzPart.end;
+  }
+
+  const after = content.slice(cursor);
+
+  if (after.trim()) {
+    segments.push(
+      ...parseImagesOnly(after, `text-${segments.length}`),
+    );
+  }
+
+  return segments;
+}
+
+/**
+ * Parse normal text for Markdown/R2 images.
+ */
+function parseImagesOnly(
+  content: string,
+  idPrefix = 'segment',
+): RenderSegment[] {
+  const segments: RenderSegment[] = [];
+
+  MARKDOWN_IMAGE_REGEX.lastIndex = 0;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
+  let index = 0;
 
-  while ((match = imageRegex.exec(content)) !== null) {
-    const textBefore = content.slice(
-      lastIndex,
-      match.index,
-    );
+  while ((match = MARKDOWN_IMAGE_REGEX.exec(content)) !== null) {
+    const textBefore = content.slice(lastIndex, match.index);
 
     if (textBefore.trim()) {
-      lines.push({
+      segments.push({
         type: 'text',
         content: textBefore,
+        id: `${idPrefix}-text-${index++}`,
       });
     }
 
-    lines.push({
+    segments.push({
       type: 'image',
       content: match[2],
       alt: match[1] || 'Diagram',
+      id: `${idPrefix}-image-${index++}`,
     });
 
-    lastIndex = imageRegex.lastIndex;
+    lastIndex = MARKDOWN_IMAGE_REGEX.lastIndex;
   }
 
   const remaining = content.slice(lastIndex);
 
   if (remaining.trim()) {
-    lines.push({
+    segments.push({
       type: 'text',
       content: remaining,
+      id: `${idPrefix}-text-${index++}`,
     });
   }
 
-  return lines;
+  return segments;
 }
 
 /**
  * Render ordinary text / inline math / display math with KaTeX.
  *
- * This function deliberately handles common Accqudo authoring syntax:
+ * Supported:
  *
  * $x^2$
  *
  * $$x^2 + y^2 = z^2$$
  *
- * \(...\)
+ * \(x^2\)
  *
- * \[...\]
+ * \[x^2\]
  */
 function renderKaTeX(content: string): string {
   if (!content.trim()) {
@@ -191,7 +356,12 @@ function renderKaTeX(content: string): string {
     },
   );
 
-  // Convert newlines to visible line breaks.
+  /**
+   * Convert newlines to actual visual line breaks.
+   *
+   * This is important for normal question text because the browser
+   * otherwise collapses ordinary newline characters.
+   */
   html = html.replace(/\n/g, '<br />');
 
   return html;
@@ -225,7 +395,8 @@ function renderExpression(
 }
 
 /**
- * Escape HTML before inserting normal text into dangerouslySetInnerHTML.
+ * Escape HTML before inserting normal text into
+ * dangerouslySetInnerHTML.
  */
 function escapeHtml(value: string): string {
   return value
@@ -238,8 +409,6 @@ function escapeHtml(value: string): string {
 
 /**
  * Undo only the HTML escaping we performed internally.
- *
- * This is used before sending the math expression to KaTeX.
  */
 function unescapeHtml(value: string): string {
   return value
@@ -274,49 +443,35 @@ function getAuthToken(): string | null {
   );
 }
 
-export const MathRenderer: React.FC<MathRendererProps> = ({
-  content,
-  className = '',
-}) => {
-  const [complexSvg, setComplexSvg] = useState<string | null>(
-    null,
-  );
-
-  const [isRenderingComplex, setIsRenderingComplex] =
-    useState(false);
-
-  const [renderError, setRenderError] = useState<string | null>(
-    null,
-  );
-
-  const hasComplexLatex = useMemo(
-    () => containsComplexLatex(content),
-    [content],
-  );
-
-  const parsedContent = useMemo(
-    () => parseContent(content),
-    [content],
-  );
-
-  // ----------------------------------------------------------------
-  // Backend complex LaTeX / TikZ rendering
-  // ----------------------------------------------------------------
+/**
+ * Backend-rendered complex LaTeX/TikZ segment.
+ *
+ * Each diagram gets its own API request and its own loading/error state.
+ *
+ * This is what allows a question to contain:
+ *
+ * text
+ * diagram
+ * text
+ * diagram
+ * text
+ *
+ * without turning the whole question into one LaTeX document.
+ */
+const BackendLatexBlock: React.FC<{
+  content: string;
+}> = ({ content }) => {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [isRendering, setIsRendering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!hasComplexLatex) {
-      setComplexSvg(null);
-      setRenderError(null);
-      setIsRenderingComplex(false);
-      return;
-    }
-
     if (!content.trim()) {
-      setComplexSvg(null);
-      setRenderError(null);
-      setIsRenderingComplex(false);
+      setSvg(null);
+      setError(null);
+      setIsRendering(false);
       return;
     }
 
@@ -325,8 +480,8 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
         return;
       }
 
-      setIsRenderingComplex(true);
-      setRenderError(null);
+      setIsRendering(true);
+      setError(null);
 
       try {
         const token = getAuthToken();
@@ -383,24 +538,24 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
         }
 
         if (!cancelled) {
-          setComplexSvg(data.svg);
-          setRenderError(null);
+          setSvg(data.svg);
+          setError(null);
         }
       } catch (error) {
         if (cancelled) {
           return;
         }
 
-        setComplexSvg(null);
+        setSvg(null);
 
-        setRenderError(
+        setError(
           error instanceof Error
             ? error.message
             : 'Unable to render complex LaTeX.',
         );
       } finally {
         if (!cancelled) {
-          setIsRenderingComplex(false);
+          setIsRendering(false);
         }
       }
     }, 450);
@@ -409,92 +564,117 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [content, hasComplexLatex]);
+  }, [content]);
 
-  // ----------------------------------------------------------------
-  // Empty state
-  // ----------------------------------------------------------------
+  return (
+    <div className="latex-complex-block my-4 w-full">
+      {isRendering && (
+        <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+          <span
+            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
+            aria-hidden="true"
+          />
 
+          <span>Rendering diagram…</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="my-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="font-medium">
+            Unable to render this LaTeX
+          </div>
+
+          <div className="mt-1 break-words text-xs">
+            {error}
+          </div>
+        </div>
+      )}
+
+      {svg && (
+        <div
+          className="latex-svg-renderer flex w-full justify-center overflow-x-auto py-3"
+          dangerouslySetInnerHTML={{
+            __html: svg,
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+/**
+ * Main MathRenderer component.
+ *
+ * Supports:
+ *
+ * 1. Normal text
+ * 2. Inline KaTeX
+ * 3. Display KaTeX
+ * 4. Markdown/R2 images
+ * 5. Embedded TikZ diagrams
+ * 6. Multiple TikZ diagrams in one question
+ * 7. Text before/after diagrams
+ * 8. Complete standalone LaTeX documents
+ */
+export const MathRenderer: React.FC<MathRendererProps> = ({
+  content,
+  className = '',
+}) => {
+  const segments = useMemo(
+    () => parseMixedContent(content),
+    [content],
+  );
+
+  /**
+   * Empty state.
+   */
   if (!content?.trim()) {
     return null;
   }
-
-  // ----------------------------------------------------------------
-  // Complex LaTeX / TikZ
-  // ----------------------------------------------------------------
-
-  if (hasComplexLatex) {
-    return (
-      <div
-        className={[
-          'w-full',
-          'overflow-x-auto',
-          className,
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        {isRenderingComplex && (
-          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-            <span
-              className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
-              aria-hidden="true"
-            />
-
-            <span>
-              Rendering diagram…
-            </span>
-          </div>
-        )}
-
-        {renderError && (
-          <div className="my-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <div className="font-medium">
-              Unable to render this LaTeX
-            </div>
-
-            <div className="mt-1 break-words text-xs">
-              {renderError}
-            </div>
-          </div>
-        )}
-
-        {complexSvg && (
-          <div
-            className="latex-svg-renderer flex w-full justify-center overflow-x-auto py-2"
-            dangerouslySetInnerHTML={{
-              __html: complexSvg,
-            }}
-          />
-        )}
-      </div>
-    );
-  }
-
-  // ----------------------------------------------------------------
-  // Normal KaTeX / Markdown image rendering
-  // ----------------------------------------------------------------
 
   return (
     <div
       className={[
         'math-renderer',
         'w-full',
+        'min-w-0',
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      {parsedContent.map((line, index) => {
-        if (line.type === 'image') {
+      {segments.map((segment, index) => {
+        const key =
+          segment.id ||
+          `${segment.type}-${index}`;
+
+        // ---------------------------------------------------------
+        // Backend LaTeX / TikZ
+        // ---------------------------------------------------------
+
+        if (segment.type === 'complex') {
+          return (
+            <BackendLatexBlock
+              key={key}
+              content={segment.content}
+            />
+          );
+        }
+
+        // ---------------------------------------------------------
+        // Markdown / R2 image
+        // ---------------------------------------------------------
+
+        if (segment.type === 'image') {
           return (
             <div
-              key={`image-${index}`}
-              className="my-3 flex justify-center"
+              key={key}
+              className="my-4 flex w-full justify-center"
             >
               <img
-                src={line.content}
-                alt={line.alt || 'Diagram'}
+                src={segment.content}
+                alt={segment.alt || 'Diagram'}
                 className="max-h-[500px] max-w-full rounded-md object-contain"
                 loading="lazy"
               />
@@ -502,12 +682,16 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
           );
         }
 
+        // ---------------------------------------------------------
+        // Normal text + KaTeX
+        // ---------------------------------------------------------
+
         return (
           <div
-            key={`text-${index}`}
-            className="leading-7"
+            key={key}
+            className="math-renderer-text w-full leading-7"
             dangerouslySetInnerHTML={{
-              __html: renderKaTeX(line.content),
+              __html: renderKaTeX(segment.content),
             }}
           />
         );
