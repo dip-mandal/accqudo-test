@@ -12,8 +12,6 @@ import React, {
 
   useCallback,
 
-  useMemo,
-
 } from 'react';
 
 import {
@@ -26,7 +24,7 @@ import {
 
 } from 'next/navigation';
 
-import katex from 'katex';
+import { MathRenderer } from '@/components/MathRenderer';
 
 import {
 
@@ -432,120 +430,6 @@ const UI_TRANSLATIONS: Record<
 
 
 
-  const MathRenderer = ({ content, className = '' }: { content: string; className?: string }) => {
-    const segments = useMemo(() => splitRenderableContent(content || ''), [content]);
-    return (
-      <div className={`w-full min-w-0 leading-relaxed ${className}`}>
-        {segments.map((segment, index) => {
-          if (segment.type === 'image') {
-            return (
-              <div key={`image-${index}`} className="my-5 flex w-full justify-center overflow-hidden">
-                <img src={segment.src} alt={segment.alt} loading="lazy" draggable={false}
-                  className="h-auto max-h-[520px] max-w-full rounded-xl border border-slate-700 bg-white object-contain shadow-sm" />
-              </div>
-            );
-          }
-          if (segment.type === 'complex') return <RemoteLatexBlock key={`latex-${index}`} source={segment.content} />;
-          return (
-            <div key={`text-${index}`} className="w-full min-w-0 whitespace-normal break-words"
-              dangerouslySetInnerHTML={{ __html: renderMathText(segment.content) }} />
-          );
-        })}
-      </div>
-    );
-  };
-
-  function splitRenderableContent(content: string): Array<
-    | { type: 'text'; content: string }
-    | { type: 'complex'; content: string }
-    | { type: 'image'; src: string; alt: string }
-  > {
-    if (!content) return [];
-    const fullDoc = /\\documentclass(?:\[[^\]]*\])?\{[^}]+\}[\s\S]*?\\begin\{document\}[\s\S]*?\\end\{document\}/m.exec(content);
-    if (fullDoc && fullDoc[0].trim() === content.trim()) return [{ type: 'complex', content }];
-
-    const tokenRegex = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)|\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g;
-    const result: Array<
-      | { type: 'text'; content: string }
-      | { type: 'complex'; content: string }
-      | { type: 'image'; src: string; alt: string }
-    > = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = tokenRegex.exec(content)) !== null) {
-      if (match.index > lastIndex) result.push({ type: 'text', content: content.slice(lastIndex, match.index) });
-      if (match[1] !== undefined && match[2] !== undefined) {
-        try {
-          const url = new URL(match[2]);
-          result.push(url.protocol === 'https:' || url.protocol === 'http:'
-            ? { type: 'image', src: url.toString(), alt: match[1] || 'Diagram' }
-            : { type: 'text', content: match[0] });
-        } catch { result.push({ type: 'text', content: match[0] }); }
-      } else result.push({ type: 'complex', content: match[0] });
-      lastIndex = match.index + match[0].length;
-    }
-    if (lastIndex < content.length) result.push({ type: 'text', content: content.slice(lastIndex) });
-    return result.length ? result : [{ type: 'text', content }];
-  }
-
-  function RemoteLatexBlock({ source }: { source: string }) {
-    const [svg, setSvg] = useState('');
-    const [error, setError] = useState('');
-    const [isRendering, setIsRendering] = useState(true);
-
-    useEffect(() => {
-      let cancelled = false;
-      const controller = new AbortController();
-      const timer = window.setTimeout(async () => {
-        try {
-          setIsRendering(true); setError('');
-          const token = localStorage.getItem('accqudo_token') || localStorage.getItem('token');
-          if (!token) throw new Error('Your exam session has expired. Please sign in again.');
-          const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
-          const response = await fetch(`${apiBase}/latex/render`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ latex: source }), signal: controller.signal,
-          });
-          if (!response.ok) {
-            const data = await response.json().catch(() => null);
-            throw new Error(data?.detail || (response.status === 401 ? 'Your exam session has expired. Please sign in again.' : 'Unable to render this diagram.'));
-          }
-          const data = await response.json();
-          if (!data?.svg) throw new Error('The diagram renderer returned no SVG.');
-          if (!cancelled) setSvg(data.svg);
-        } catch (err: any) {
-          if (cancelled || err?.name === 'AbortError') return;
-          console.error('Exam LaTeX/TikZ render error:', err);
-          setSvg(''); setError(err?.message || 'Unable to render this LaTeX/TikZ content.');
-        } finally { if (!cancelled) setIsRendering(false); }
-      }, 250);
-      return () => { cancelled = true; controller.abort(); window.clearTimeout(timer); };
-    }, [source]);
-
-    if (isRendering) return <div className="my-5 flex min-h-24 w-full items-center justify-center rounded-xl border border-slate-800 bg-slate-900/50 px-4 py-6 text-center text-xs text-slate-500">Rendering diagram…</div>;
-    if (error) return (
-      <div className="my-5 rounded-xl border border-rose-900/60 bg-rose-950/30 px-4 py-3 text-xs text-rose-300">
-        <div className="font-bold">Unable to render LaTeX/TikZ</div>
-        <div className="mt-1 break-words text-rose-400/90">{error}</div>
-      </div>
-    );
-    return <div className="my-5 flex w-full min-w-0 justify-center overflow-x-auto overflow-y-hidden rounded-xl border border-slate-800 bg-white p-3 sm:p-5" aria-label="Rendered LaTeX diagram" dangerouslySetInnerHTML={{ __html: svg }} />;
-  }
-
-  function renderMathText(text: string): string {
-    if (!text) return '';
-    let formatted = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    const render = (math: string, displayMode: boolean) => {
-      try { return katex.renderToString(math.trim(), { displayMode, throwOnError: false, strict: 'ignore', trust: false }); }
-      catch { return math; }
-    };
-    formatted = formatted.replace(/\\\[([\s\S]*?)\\\]/g, (_, math: string) => render(math, true));
-    formatted = formatted.replace(/\\\(([\s\S]*?)\\\)/g, (_, math: string) => render(math, false));
-    formatted = formatted.replace(/\$\$([\s\S]*?)\$\$/g, (_, math: string) => render(math, true));
-    formatted = formatted.replace(/\$([^$\n]+?)\$/g, (_, math: string) => render(math, false));
-    return formatted.replace(/\r?\n/g, '<br />');
-  }
 
 
 export default function ProctoredExamPlayerPage() {
@@ -574,7 +458,7 @@ export default function ProctoredExamPlayerPage() {
 
     process.env.NEXT_PUBLIC_API_BASE_URL ||
 
-    'http://localhost:8000/api/v1';
+    'http://localhost:8001/api/v1';
 
 
 
@@ -2610,7 +2494,6 @@ export default function ProctoredExamPlayerPage() {
             </div>
 
           </div>
-          
 
         <style jsx global>{`
           .exam-player .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 0.35rem 0; }
@@ -2631,7 +2514,6 @@ export default function ProctoredExamPlayerPage() {
           @media (max-width: 1023px) { .exam-player header h1 { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
           @media (max-width: 639px) { .exam-player .katex { font-size: 0.98em; } }
         `}</style>
-
         </div>
 
         )}
