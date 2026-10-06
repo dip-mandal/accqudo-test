@@ -30,24 +30,15 @@ interface TrafficTabProps {
   onRefresh?: () => Promise<void> | void;
 }
 
-/**
- * Your FastAPI application is mounted under /api/v1.
- *
- * Existing endpoints:
- * /api/v1/super-admin/traffic
- * /api/v1/super-admin/overview
- * /api/v1/super-admin/database-schema
- * /api/v1/super-admin/admins
- *
- * New endpoints:
- * /api/v1/super-admin/traffic/export
- * /api/v1/super-admin/traffic/status/{statusCode}
- */
+/* ============================================================
+   API CONFIGURATION
+   ============================================================ */
+
 const API_BASE = '/api/v1';
 
 /**
- * Only these HTTP status codes can be deleted
- * from the traffic log management interface.
+ * These are the status codes that the Super Admin is
+ * explicitly allowed to delete.
  */
 const DELETABLE_STATUSES = [
   200,
@@ -59,6 +50,113 @@ const DELETABLE_STATUSES = [
   422,
   500,
 ];
+
+/* ============================================================
+   AUTHENTICATION
+   ============================================================ */
+
+/**
+ * Get the currently stored authentication token.
+ *
+ * The existing Super Admin traffic endpoint is already
+ * authenticated successfully, while the newly-added direct
+ * fetch requests were returning 401.
+ *
+ * This function checks several common token names so the
+ * component can work with the authentication storage used
+ * by the application without hard-coding only one name.
+ */
+function getStoredAuthToken(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const possibleKeys = [
+    'access_token',
+    'accessToken',
+    'auth_token',
+    'authToken',
+    'token',
+    'jwt',
+    'id_token',
+    'idToken',
+    'user_token',
+    'userToken',
+  ];
+
+  for (const key of possibleKeys) {
+    try {
+      const value = window.localStorage.getItem(key);
+
+      if (value && value.trim()) {
+        return value.trim();
+      }
+    } catch {
+      // localStorage may be unavailable in some environments.
+    }
+  }
+
+  /**
+   * Also check sessionStorage because some authentication
+   * implementations store the access token there.
+   */
+  for (const key of possibleKeys) {
+    try {
+      const value = window.sessionStorage.getItem(key);
+
+      if (value && value.trim()) {
+        return value.trim();
+      }
+    } catch {
+      // sessionStorage may be unavailable.
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Build headers for authenticated API requests.
+ *
+ * Cookies are still included through credentials: 'include'.
+ *
+ * If an access token exists in localStorage/sessionStorage,
+ * it is additionally sent as:
+ *
+ * Authorization: Bearer <token>
+ */
+function getAuthenticatedHeaders(
+  includeJsonContentType = false,
+): HeadersInit {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+
+  if (includeJsonContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const token = getStoredAuthToken();
+
+  if (token) {
+    /**
+     * Avoid accidentally producing:
+     *
+     * Bearer Bearer eyJ...
+     */
+    if (token.toLowerCase().startsWith('bearer ')) {
+      headers.Authorization = token;
+    } else {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  return headers;
+}
+
+/* ============================================================
+   HELPER FUNCTIONS
+   ============================================================ */
 
 /**
  * Return Tailwind classes according to HTTP status.
@@ -122,25 +220,29 @@ function getStatusCount(
   );
 }
 
+/* ============================================================
+   COMPONENT
+   ============================================================ */
+
 export default function TrafficTab({
   data,
   onRefresh,
 }: TrafficTabProps) {
-  const [deletingStatus, setDeletingStatus] = useState<
-    number | null
-  >(null);
+  const [deletingStatus, setDeletingStatus] =
+    useState<number | null>(null);
 
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] =
+    useState(false);
 
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
 
-  /**
-   * Build the status cards from the fixed list of
-   * statuses that can be individually deleted.
-   */
+  /* ==========================================================
+     STATUS SUMMARY
+     ========================================================== */
+
   const statusSummary = useMemo(() => {
     const existing = data.status_summary ?? [];
 
@@ -153,23 +255,39 @@ export default function TrafficTab({
     }));
   }, [data.status_summary]);
 
-  /**
-   * Download the COMPLETE traffic table as a .log file.
-   *
-   * IMPORTANT:
-   * This uses /api/v1 because your FastAPI application
-   * is mounted under /api/v1.
-   */
+  /* ==========================================================
+     DOWNLOAD COMPLETE LOG
+     ========================================================== */
+
   const handleDownloadLog = async () => {
     try {
       setDownloading(true);
       setMessage(null);
 
+      /**
+       * IMPORTANT:
+       *
+       * This is the authenticated endpoint:
+       *
+       * GET /api/v1/super-admin/traffic/export
+       */
       const response = await fetch(
         `${API_BASE}/super-admin/traffic/export`,
         {
           method: 'GET',
+
+          /**
+           * Send authentication cookies when the application
+           * uses cookie-based authentication.
+           */
           credentials: 'include',
+
+          /**
+           * Also send the Bearer token when authentication
+           * is token-based.
+           */
+          headers: getAuthenticatedHeaders(false),
+
           cache: 'no-store',
         },
       );
@@ -179,13 +297,24 @@ export default function TrafficTab({
           'Unable to download traffic log.';
 
         try {
-          const errorData = await response.json();
+          const errorData =
+            await response.json();
 
           errorMessage =
             errorData?.detail ||
             errorMessage;
         } catch {
-          // The response was not JSON.
+          // Response wasn't JSON.
+        }
+
+        if (response.status === 401) {
+          errorMessage =
+            'Not authenticated (HTTP 401). Please sign in again and retry.';
+        }
+
+        if (response.status === 403) {
+          errorMessage =
+            'Access denied. Super Admin privileges are required.';
         }
 
         throw new Error(
@@ -194,12 +323,13 @@ export default function TrafficTab({
       }
 
       /**
-       * Convert the response to a Blob.
+       * Convert the streaming response to a Blob.
        */
-      const blob = await response.blob();
+      const blob =
+        await response.blob();
 
       /**
-       * Try to use the filename supplied by the backend.
+       * Read filename from Content-Disposition.
        */
       const disposition =
         response.headers.get(
@@ -210,9 +340,10 @@ export default function TrafficTab({
         'accqudo-traffic-logs.log';
 
       if (disposition) {
-        const match = disposition.match(
-          /filename="?([^"]+)"?/i,
-        );
+        const match =
+          disposition.match(
+            /filename="?([^"]+)"?/i,
+          );
 
         if (match?.[1]) {
           filename = match[1];
@@ -223,31 +354,44 @@ export default function TrafficTab({
        * Create temporary browser download URL.
        */
       const downloadUrl =
-        window.URL.createObjectURL(blob);
+        window.URL.createObjectURL(
+          blob,
+        );
 
       const anchor =
         document.createElement('a');
 
-      anchor.href = downloadUrl;
-      anchor.download = filename;
+      anchor.href =
+        downloadUrl;
 
-      document.body.appendChild(anchor);
+      anchor.download =
+        filename;
+
+      anchor.style.display =
+        'none';
+
+      document.body.appendChild(
+        anchor,
+      );
 
       anchor.click();
 
       anchor.remove();
 
       /**
-       * Release the temporary object URL.
+       * Release object URL after the download
+       * has been triggered.
        */
-      window.URL.revokeObjectURL(
-        downloadUrl,
-      );
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(
+          downloadUrl,
+        );
+      }, 1000);
 
       setMessage({
         type: 'success',
         text:
-          'Traffic log downloaded successfully.',
+          'Complete traffic log downloaded successfully.',
       });
     } catch (error) {
       setMessage({
@@ -262,25 +406,21 @@ export default function TrafficTab({
     }
   };
 
-  /**
-   * Delete traffic logs belonging to one
-   * specific HTTP status code.
-   *
-   * Example:
-   *
-   * DELETE /api/v1/super-admin/traffic/status/404
-   */
+  /* ==========================================================
+     DELETE LOGS BY STATUS
+     ========================================================== */
+
   const handleDeleteStatus = async (
     statusCode: number,
   ) => {
-    const count = getStatusCount(
-      data.status_summary,
-      statusCode,
-    );
+    const count =
+      getStatusCount(
+        data.status_summary,
+        statusCode,
+      );
 
     /**
-     * Do not make an API request when there
-     * are no records for this status.
+     * No records means no API request is required.
      */
     if (count === 0) {
       setMessage({
@@ -294,35 +434,52 @@ export default function TrafficTab({
     }
 
     /**
-     * Require explicit confirmation because
-     * deletion is permanent.
+     * Permanent deletion requires explicit confirmation.
      */
-    const confirmed = window.confirm(
-      `Delete ALL ${count.toLocaleString()} ` +
-        `traffic log ${
-          count === 1
-            ? 'record'
-            : 'records'
-        } with status ${statusCode}?\n\n` +
-        `This action cannot be undone.`,
-    );
+    const confirmed =
+      window.confirm(
+        `Delete ALL ${count.toLocaleString()} ` +
+          `traffic log ${
+            count === 1
+              ? 'record'
+              : 'records'
+          } with status ${statusCode}?\n\n` +
+          `This action cannot be undone.`,
+      );
 
     if (!confirmed) {
       return;
     }
 
     try {
-      setDeletingStatus(statusCode);
+      setDeletingStatus(
+        statusCode,
+      );
+
       setMessage(null);
 
-      const response = await fetch(
-        `${API_BASE}/super-admin/traffic/status/${statusCode}`,
-        {
-          method: 'DELETE',
-          credentials: 'include',
-          cache: 'no-store',
-        },
-      );
+      /**
+       * IMPORTANT:
+       *
+       * DELETE
+       * /api/v1/super-admin/traffic/status/{statusCode}
+       */
+      const response =
+        await fetch(
+          `${API_BASE}/super-admin/traffic/status/${statusCode}`,
+          {
+            method: 'DELETE',
+
+            credentials: 'include',
+
+            headers:
+              getAuthenticatedHeaders(
+                false,
+              ),
+
+            cache: 'no-store',
+          },
+        );
 
       const result =
         await response
@@ -330,10 +487,22 @@ export default function TrafficTab({
           .catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
+        let errorMessage =
           result?.detail ||
-            `Unable to delete ${statusCode} ` +
-              `traffic logs. HTTP ${response.status}`,
+          `Unable to delete ${statusCode} traffic logs.`;
+
+        if (response.status === 401) {
+          errorMessage =
+            'Not authenticated (HTTP 401). Please sign in again and retry.';
+        }
+
+        if (response.status === 403) {
+          errorMessage =
+            'Access denied. Super Admin privileges are required.';
+        }
+
+        throw new Error(
+          `${errorMessage} (HTTP ${response.status})`,
         );
       }
 
@@ -342,13 +511,18 @@ export default function TrafficTab({
         text:
           result?.message ||
           `Deleted ${
-            result?.deleted_count ?? count
+            result?.deleted_count ??
+            count
           } log records with status ${statusCode}.`,
       });
 
       /**
-       * Refresh the parent traffic data after
-       * successful deletion.
+       * Refresh the parent traffic data so:
+       *
+       * - Total requests updates
+       * - Unique IP count updates
+       * - Status counts update
+       * - Latest logs update
        */
       if (onRefresh) {
         await onRefresh();
@@ -359,20 +533,25 @@ export default function TrafficTab({
         text:
           error instanceof Error
             ? error.message
-            : `Unable to delete ${statusCode} ` +
-              `traffic logs.`,
+            : `Unable to delete ${statusCode} traffic logs.`,
       });
     } finally {
-      setDeletingStatus(null);
+      setDeletingStatus(
+        null,
+      );
     }
   };
+
+  /* ==========================================================
+     RENDER
+     ========================================================== */
 
   return (
     <div className="space-y-6">
 
-      {/* =====================================================
+      {/* ======================================================
           TOP METRICS
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
@@ -417,9 +596,9 @@ export default function TrafficTab({
       </div>
 
 
-      {/* =====================================================
-          STATUS / DOWNLOAD MESSAGE
-      ====================================================== */}
+      {/* ======================================================
+          MESSAGE
+      ======================================================= */}
 
       {message && (
         <div
@@ -434,9 +613,9 @@ export default function TrafficTab({
       )}
 
 
-      {/* =====================================================
+      {/* ======================================================
           TRAFFIC LOG MANAGEMENT
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
 
@@ -464,8 +643,12 @@ export default function TrafficTab({
 
             <button
               type="button"
-              onClick={handleDownloadLog}
-              disabled={downloading}
+              onClick={
+                handleDownloadLog
+              }
+              disabled={
+                downloading
+              }
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#16293F] text-white text-xs font-bold hover:bg-[#213c5c] disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
 
@@ -477,7 +660,9 @@ export default function TrafficTab({
                 </>
               ) : (
                 <>
-                  <span>↓</span>
+                  <span>
+                    ↓
+                  </span>
 
                   Download Complete .LOG
                 </>
@@ -490,9 +675,9 @@ export default function TrafficTab({
         </div>
 
 
-        {/* ===================================================
+        {/* ====================================================
             DELETE STATUS CONTROLS
-        ==================================================== */}
+        ===================================================== */}
 
         <div className="p-5 bg-stone-50 border-b border-stone-200">
 
@@ -512,65 +697,69 @@ export default function TrafficTab({
 
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
 
-            {statusSummary.map((item) => {
+            {statusSummary.map(
+              (item) => {
+                const status =
+                  item.status_code;
 
-              const status =
-                item.status_code;
+                const count =
+                  item.count;
 
-              const count =
-                item.count;
+                const deleting =
+                  deletingStatus ===
+                  status;
 
-              const deleting =
-                deletingStatus === status;
-
-              return (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() =>
-                    handleDeleteStatus(status)
-                  }
-                  disabled={
-                    deleting ||
-                    count === 0
-                  }
-                  className={`group rounded-xl border p-3 text-left transition ${
-                    count === 0
-                      ? 'bg-white border-stone-200 opacity-50 cursor-not-allowed'
-                      : 'bg-white hover:bg-stone-100 border-stone-200'
-                  }`}
-                >
-
-                  <div className="flex items-center justify-between gap-2">
-
-                    <span
-                      className={`px-2 py-0.5 rounded-md border text-[10px] font-black ${getStatusClasses(
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() =>
+                      handleDeleteStatus(
                         status,
-                      )}`}
-                    >
-                      {status}
-                    </span>
+                      )
+                    }
+                    disabled={
+                      deleting ||
+                      count === 0
+                    }
+                    className={`group rounded-xl border p-3 text-left transition ${
+                      count === 0
+                        ? 'bg-white border-stone-200 opacity-50 cursor-not-allowed'
+                        : 'bg-white hover:bg-stone-100 border-stone-200'
+                    }`}
+                  >
 
-                    {deleting && (
-                      <span className="animate-spin h-3 w-3 rounded-full border border-stone-300 border-t-stone-700" />
-                    )}
+                    <div className="flex items-center justify-between gap-2">
 
-                  </div>
+                      <span
+                        className={`px-2 py-0.5 rounded-md border text-[10px] font-black ${getStatusClasses(
+                          status,
+                        )}`}
+                      >
+                        {status}
+                      </span>
+
+                      {deleting && (
+                        <span className="animate-spin h-3 w-3 rounded-full border border-stone-300 border-t-stone-700" />
+                      )}
+
+                    </div>
 
 
-                  <p className="text-lg font-black text-[#16293F] mt-2">
-                    {count.toLocaleString()}
-                  </p>
+                    <p className="text-lg font-black text-[#16293F] mt-2">
+                      {count.toLocaleString()}
+                    </p>
 
-                  <p className="text-[10px] text-stone-400">
-                    {count === 1
-                      ? 'record'
-                      : 'records'}
-                  </p>
+                    <p className="text-[10px] text-stone-400">
+                      {count === 1
+                        ? 'record'
+                        : 'records'}
+                    </p>
 
-                </button>
-              );
-            })}
+                  </button>
+                );
+              },
+            )}
 
           </div>
 
@@ -579,9 +768,9 @@ export default function TrafficTab({
       </div>
 
 
-      {/* =====================================================
+      {/* ======================================================
           LIVE TRAFFIC TABLE
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
 
@@ -606,7 +795,8 @@ export default function TrafficTab({
             </div>
 
 
-            {data.logs.length > 0 && (
+            {data.logs.length >
+              0 && (
               <span className="text-[10px] font-bold text-emerald-600">
                 ● STREAM ACTIVE
               </span>
@@ -662,8 +852,8 @@ export default function TrafficTab({
 
             <tbody className="divide-y divide-stone-100 font-mono text-[11px]">
 
-              {data.logs.length === 0 ? (
-
+              {data.logs.length ===
+              0 ? (
                 <tr>
 
                   <td
@@ -674,132 +864,154 @@ export default function TrafficTab({
                   </td>
 
                 </tr>
-
               ) : (
+                data.logs.map(
+                  (log) => (
+                    <tr
+                      key={
+                        log.id
+                      }
+                      className="hover:bg-stone-50 transition"
+                    >
 
-                data.logs.map((log) => (
+                      {/* ID */}
 
-                  <tr
-                    key={log.id}
-                    className="hover:bg-stone-50 transition"
-                  >
-
-                    {/* ID */}
-
-                    <td className="p-3 text-stone-400">
-                      #{log.id}
-                    </td>
+                      <td className="p-3 text-stone-400">
+                        #{log.id}
+                      </td>
 
 
-                    {/* METHOD + PATH */}
+                      {/* METHOD + PATH */}
 
-                    <td className="p-3">
+                      <td className="p-3">
 
-                      <div className="flex items-start gap-2">
+                        <div className="flex items-start gap-2">
+
+                          <span
+                            className={`px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                              log.method ===
+                              'GET'
+                                ? 'bg-blue-50 text-blue-700'
+                                : log.method ===
+                                  'POST'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : log.method ===
+                                  'DELETE'
+                                ? 'bg-rose-50 text-rose-700'
+                                : log.method ===
+                                  'PUT'
+                                ? 'bg-amber-50 text-amber-700'
+                                : log.method ===
+                                  'PATCH'
+                                ? 'bg-purple-50 text-purple-700'
+                                : log.method ===
+                                  'OPTIONS'
+                                ? 'bg-stone-100 text-stone-700'
+                                : 'bg-stone-100 text-stone-700'
+                            }`}
+                          >
+                            {
+                              log.method
+                            }
+                          </span>
+
+                          <span
+                            className="text-stone-800 font-semibold break-all"
+                            title={
+                              log.path
+                            }
+                          >
+                            {
+                              log.path
+                            }
+                          </span>
+
+                        </div>
+
+                      </td>
+
+
+                      {/* STATUS */}
+
+                      <td className="p-3">
 
                         <span
-                          className={`px-1.5 py-0.5 rounded font-bold shrink-0 ${
-                            log.method === 'GET'
-                              ? 'bg-blue-50 text-blue-700'
-                              : log.method === 'POST'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : log.method === 'DELETE'
-                              ? 'bg-rose-50 text-rose-700'
-                              : log.method === 'PUT'
-                              ? 'bg-amber-50 text-amber-700'
-                              : log.method === 'PATCH'
-                              ? 'bg-purple-50 text-purple-700'
-                              : log.method === 'OPTIONS'
-                              ? 'bg-stone-100 text-stone-700'
-                              : 'bg-stone-100 text-stone-700'
-                          }`}
+                          className={`px-2 py-0.5 rounded border font-bold ${getStatusClasses(
+                            log.status_code,
+                          )}`}
                         >
-                          {log.method}
+                          {
+                            log.status_code
+                          }
                         </span>
 
+                      </td>
+
+
+                      {/* IP */}
+
+                      <td className="p-3 text-stone-600 whitespace-nowrap">
+                        {
+                          log.ip_address ||
+                          'N/A'
+                        }
+                      </td>
+
+
+                      {/* LATENCY */}
+
+                      <td className="p-3 whitespace-nowrap">
 
                         <span
-                          className="text-stone-800 font-semibold break-all"
-                          title={log.path}
+                          className={
+                            log.response_time_ms >=
+                            1000
+                              ? 'text-rose-600 font-bold'
+                              : log.response_time_ms >=
+                                500
+                              ? 'text-amber-600 font-bold'
+                              : 'text-stone-600'
+                          }
                         >
-                          {log.path}
+                          {Number(
+                            log.response_time_ms ||
+                              0,
+                          ).toFixed(
+                            2,
+                          )}{' '}
+                          ms
                         </span>
 
-                      </div>
-
-                    </td>
+                      </td>
 
 
-                    {/* STATUS */}
+                      {/* USER AGENT */}
 
-                    <td className="p-3">
-
-                      <span
-                        className={`px-2 py-0.5 rounded border font-bold ${getStatusClasses(
-                          log.status_code,
-                        )}`}
-                      >
-                        {log.status_code}
-                      </span>
-
-                    </td>
-
-
-                    {/* IP */}
-
-                    <td className="p-3 text-stone-600 whitespace-nowrap">
-                      {log.ip_address || 'N/A'}
-                    </td>
-
-
-                    {/* LATENCY */}
-
-                    <td className="p-3 whitespace-nowrap">
-
-                      <span
-                        className={
-                          log.response_time_ms >=
-                          1000
-                            ? 'text-rose-600 font-bold'
-                            : log.response_time_ms >=
-                              500
-                            ? 'text-amber-600 font-bold'
-                            : 'text-stone-600'
+                      <td
+                        className="p-3 text-stone-400 max-w-md truncate"
+                        title={
+                          log.user_agent ||
+                          ''
                         }
                       >
-                        {Number(
-                          log.response_time_ms || 0,
-                        ).toFixed(2)}{' '}
-                        ms
-                      </span>
-
-                    </td>
+                        {
+                          log.user_agent ||
+                          'N/A'
+                        }
+                      </td>
 
 
-                    {/* USER AGENT */}
+                      {/* TIMESTAMP */}
 
-                    <td
-                      className="p-3 text-stone-400 max-w-md truncate"
-                      title={
-                        log.user_agent || ''
-                      }
-                    >
-                      {log.user_agent || 'N/A'}
-                    </td>
+                      <td className="p-3 text-stone-400 whitespace-nowrap">
+                        {formatTimestamp(
+                          log.timestamp,
+                        )}
+                      </td>
 
-
-                    {/* TIMESTAMP */}
-
-                    <td className="p-3 text-stone-400 whitespace-nowrap">
-                      {formatTimestamp(
-                        log.timestamp,
-                      )}
-                    </td>
-
-                  </tr>
-
-                ))
-
+                    </tr>
+                  ),
+                )
               )}
 
             </tbody>
