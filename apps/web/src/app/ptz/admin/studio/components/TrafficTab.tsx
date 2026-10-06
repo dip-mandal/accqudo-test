@@ -34,12 +34,16 @@ interface TrafficTabProps {
    API CONFIGURATION
    ============================================================ */
 
-const API_BASE = '/api/v1';
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  'https://api.accqudo.com/api/v1'
+).replace(/\/+$/, '');
 
-/**
- * These are the status codes that the Super Admin is
- * explicitly allowed to delete.
- */
+
+/* ============================================================
+   ALLOWED STATUS CODES
+   ============================================================ */
+
 const DELETABLE_STATUSES = [
   200,
   400,
@@ -51,81 +55,48 @@ const DELETABLE_STATUSES = [
   500,
 ];
 
+
 /* ============================================================
    AUTHENTICATION
    ============================================================ */
 
 /**
- * Get the currently stored authentication token.
+ * Your authentication system stores the JWT as:
  *
- * The existing Super Admin traffic endpoint is already
- * authenticated successfully, while the newly-added direct
- * fetch requests were returning 401.
+ * localStorage.setItem('accqudo_token', data.access_token)
  *
- * This function checks several common token names so the
- * component can work with the authentication storage used
- * by the application without hard-coding only one name.
+ * The FastAPI backend uses OAuth2PasswordBearer and therefore
+ * requires:
+ *
+ * Authorization: Bearer <JWT>
  */
-function getStoredAuthToken(): string | null {
+function getAccessToken(): string | null {
   if (typeof window === 'undefined') {
     return null;
   }
 
-  const possibleKeys = [
-    'access_token',
-    'accessToken',
-    'auth_token',
-    'authToken',
-    'token',
-    'jwt',
-    'id_token',
-    'idToken',
-    'user_token',
-    'userToken',
-  ];
+  try {
+    const token =
+      window.localStorage.getItem(
+        'accqudo_token',
+      );
 
-  for (const key of possibleKeys) {
-    try {
-      const value = window.localStorage.getItem(key);
-
-      if (value && value.trim()) {
-        return value.trim();
-      }
-    } catch {
-      // localStorage may be unavailable in some environments.
+    if (!token) {
+      return null;
     }
+
+    return token.trim();
+  } catch {
+    return null;
   }
-
-  /**
-   * Also check sessionStorage because some authentication
-   * implementations store the access token there.
-   */
-  for (const key of possibleKeys) {
-    try {
-      const value = window.sessionStorage.getItem(key);
-
-      if (value && value.trim()) {
-        return value.trim();
-      }
-    } catch {
-      // sessionStorage may be unavailable.
-    }
-  }
-
-  return null;
 }
 
+
 /**
- * Build headers for authenticated API requests.
- *
- * Cookies are still included through credentials: 'include'.
- *
- * If an access token exists in localStorage/sessionStorage,
- * it is additionally sent as:
- *
- * Authorization: Bearer <token>
+ * Build authenticated headers for every protected
+ * Super Admin request.
  */
-function getAuthenticatedHeaders(
+function getAuthHeaders(
   includeJsonContentType = false,
 ): HeadersInit {
   const headers: Record<string, string> = {
@@ -133,52 +104,60 @@ function getAuthenticatedHeaders(
   };
 
   if (includeJsonContentType) {
-    headers['Content-Type'] = 'application/json';
+    headers['Content-Type'] =
+      'application/json';
   }
 
-  const token = getStoredAuthToken();
+  const token = getAccessToken();
 
   if (token) {
-    /**
-     * Avoid accidentally producing:
-     *
-     * Bearer Bearer eyJ...
-     */
-    if (token.toLowerCase().startsWith('bearer ')) {
-      headers.Authorization = token;
-    } else {
-      headers.Authorization = `Bearer ${token}`;
-    }
+    headers.Authorization =
+      `Bearer ${token}`;
   }
 
   return headers;
 }
 
+
 /* ============================================================
-   HELPER FUNCTIONS
+   HELPERS
    ============================================================ */
 
-/**
- * Return Tailwind classes according to HTTP status.
- */
-function getStatusClasses(status: number) {
-  if (status >= 200 && status < 300) {
+function getStatusClasses(
+  status: number,
+) {
+  if (
+    status >= 200 &&
+    status < 300
+  ) {
     return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   }
 
-  if (status >= 300 && status < 400) {
+  if (
+    status >= 300 &&
+    status < 400
+  ) {
     return 'bg-blue-50 text-blue-700 border-blue-200';
   }
 
-  if (status === 400 || status === 422) {
+  if (
+    status === 400 ||
+    status === 422
+  ) {
     return 'bg-amber-50 text-amber-700 border-amber-200';
   }
 
-  if (status === 401 || status === 403) {
+  if (
+    status === 401 ||
+    status === 403
+  ) {
     return 'bg-orange-50 text-orange-700 border-orange-200';
   }
 
-  if (status === 404 || status === 405) {
+  if (
+    status === 404 ||
+    status === 405
+  ) {
     return 'bg-purple-50 text-purple-700 border-purple-200';
   }
 
@@ -189,36 +168,43 @@ function getStatusClasses(status: number) {
   return 'bg-stone-100 text-stone-700 border-stone-200';
 }
 
-/**
- * Safely format a timestamp.
- */
-function formatTimestamp(timestamp?: string | null) {
+
+function formatTimestamp(
+  timestamp?: string | null,
+) {
   if (!timestamp) {
     return 'N/A';
   }
 
-  const date = new Date(timestamp);
+  const date =
+    new Date(timestamp);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return timestamp;
   }
 
   return date.toLocaleString();
 }
 
-/**
- * Get the number of records for a particular status code.
- */
+
 function getStatusCount(
-  statusSummary: TrafficStatusCount[] | undefined,
+  summary:
+    | TrafficStatusCount[]
+    | undefined,
   status: number,
 ) {
   return (
-    statusSummary?.find(
-      (item) => item.status_code === status,
+    summary?.find(
+      (item) =>
+        item.status_code === status,
     )?.count ?? 0
   );
 }
+
 
 /* ============================================================
    COMPONENT
@@ -228,319 +214,420 @@ export default function TrafficTab({
   data,
   onRefresh,
 }: TrafficTabProps) {
-  const [deletingStatus, setDeletingStatus] =
-    useState<number | null>(null);
 
-  const [downloading, setDownloading] =
-    useState(false);
+  const [
+    downloading,
+    setDownloading,
+  ] = useState(false);
 
-  const [message, setMessage] = useState<{
-    type: 'success' | 'error';
+  const [
+    deletingStatus,
+    setDeletingStatus,
+  ] = useState<number | null>(
+    null,
+  );
+
+  const [
+    message,
+    setMessage,
+  ] = useState<{
+    type:
+      | 'success'
+      | 'error';
     text: string;
   } | null>(null);
+
 
   /* ==========================================================
      STATUS SUMMARY
      ========================================================== */
 
-  const statusSummary = useMemo(() => {
-    const existing = data.status_summary ?? [];
+  const statusSummary =
+    useMemo(() => {
 
-    return DELETABLE_STATUSES.map((status) => ({
-      status_code: status,
-      count: getStatusCount(
-        existing,
-        status,
-      ),
-    }));
-  }, [data.status_summary]);
+      return DELETABLE_STATUSES.map(
+        (status) => ({
+          status_code: status,
+          count:
+            getStatusCount(
+              data.status_summary,
+              status,
+            ),
+        }),
+      );
+
+    }, [
+      data.status_summary,
+    ]);
+
 
   /* ==========================================================
      DOWNLOAD COMPLETE LOG
      ========================================================== */
 
-  const handleDownloadLog = async () => {
-    try {
-      setDownloading(true);
-      setMessage(null);
+  const handleDownloadLog =
+    async () => {
 
-      /**
-       * IMPORTANT:
-       *
-       * This is the authenticated endpoint:
-       *
-       * GET /api/v1/super-admin/traffic/export
-       */
-      const response = await fetch(
-        `${API_BASE}/super-admin/traffic/export`,
-        {
-          method: 'GET',
+      try {
 
-          /**
-           * Send authentication cookies when the application
-           * uses cookie-based authentication.
-           */
-          credentials: 'include',
+        setDownloading(true);
+        setMessage(null);
 
-          /**
-           * Also send the Bearer token when authentication
-           * is token-based.
-           */
-          headers: getAuthenticatedHeaders(false),
+        const token =
+          getAccessToken();
 
-          cache: 'no-store',
-        },
-      );
-
-      if (!response.ok) {
-        let errorMessage =
-          'Unable to download traffic log.';
-
-        try {
-          const errorData =
-            await response.json();
-
-          errorMessage =
-            errorData?.detail ||
-            errorMessage;
-        } catch {
-          // Response wasn't JSON.
+        if (!token) {
+          throw new Error(
+            'Authentication token not found. Please sign in again.',
+          );
         }
 
-        if (response.status === 401) {
-          errorMessage =
-            'Not authenticated (HTTP 401). Please sign in again and retry.';
-        }
 
-        if (response.status === 403) {
-          errorMessage =
-            'Access denied. Super Admin privileges are required.';
-        }
+        /**
+         * Backend:
+         *
+         * GET
+         * /api/v1/super-admin/traffic/export
+         *
+         * Requires:
+         *
+         * Authorization: Bearer <JWT>
+         */
+        const response =
+          await fetch(
+            `${API_BASE}/super-admin/traffic/export`,
+            {
+              method: 'GET',
 
-        throw new Error(
-          `${errorMessage} (HTTP ${response.status})`,
-        );
-      }
+              headers:
+                getAuthHeaders(
+                  false,
+                ),
 
-      /**
-       * Convert the streaming response to a Blob.
-       */
-      const blob =
-        await response.blob();
+              credentials:
+                'include',
 
-      /**
-       * Read filename from Content-Disposition.
-       */
-      const disposition =
-        response.headers.get(
-          'content-disposition',
-        );
-
-      let filename =
-        'accqudo-traffic-logs.log';
-
-      if (disposition) {
-        const match =
-          disposition.match(
-            /filename="?([^"]+)"?/i,
+              cache:
+                'no-store',
+            },
           );
 
-        if (match?.[1]) {
-          filename = match[1];
+
+        if (!response.ok) {
+
+          let errorMessage =
+            'Unable to download traffic log.';
+
+          try {
+
+            const errorData =
+              await response.json();
+
+            errorMessage =
+              errorData?.detail ||
+              errorMessage;
+
+          } catch {
+            // Response wasn't JSON.
+          }
+
+
+          if (
+            response.status ===
+            401
+          ) {
+            errorMessage =
+              'Not authenticated (HTTP 401). Please sign in again.';
+          }
+
+
+          if (
+            response.status ===
+            403
+          ) {
+            errorMessage =
+              'Access denied. Super Admin privileges are required.';
+          }
+
+
+          throw new Error(
+            `${errorMessage} (HTTP ${response.status})`,
+          );
         }
+
+
+        /* ====================================================
+           DOWNLOAD RESPONSE
+           ==================================================== */
+
+        const blob =
+          await response.blob();
+
+
+        let filename =
+          'accqudo-traffic-logs.log';
+
+        const contentDisposition =
+          response.headers.get(
+            'content-disposition',
+          );
+
+
+        if (
+          contentDisposition
+        ) {
+
+          const match =
+            contentDisposition.match(
+              /filename="?([^"]+)"?/i,
+            );
+
+          if (
+            match?.[1]
+          ) {
+            filename =
+              match[1];
+          }
+        }
+
+
+        /**
+         * Create browser download.
+         */
+        const downloadUrl =
+          window.URL.createObjectURL(
+            blob,
+          );
+
+        const anchor =
+          document.createElement(
+            'a',
+          );
+
+        anchor.href =
+          downloadUrl;
+
+        anchor.download =
+          filename;
+
+        anchor.style.display =
+          'none';
+
+        document.body.appendChild(
+          anchor,
+        );
+
+        anchor.click();
+
+        anchor.remove();
+
+
+        window.setTimeout(() => {
+          window.URL.revokeObjectURL(
+            downloadUrl,
+          );
+        }, 1000);
+
+
+        setMessage({
+          type: 'success',
+          text:
+            'Complete traffic log downloaded successfully.',
+        });
+
+      } catch (
+        error
+      ) {
+
+        setMessage({
+          type: 'error',
+          text:
+            error instanceof Error
+              ? error.message
+              : 'Unable to download traffic log.',
+        });
+
+      } finally {
+
+        setDownloading(false);
+
       }
+    };
 
-      /**
-       * Create temporary browser download URL.
-       */
-      const downloadUrl =
-        window.URL.createObjectURL(
-          blob,
-        );
-
-      const anchor =
-        document.createElement('a');
-
-      anchor.href =
-        downloadUrl;
-
-      anchor.download =
-        filename;
-
-      anchor.style.display =
-        'none';
-
-      document.body.appendChild(
-        anchor,
-      );
-
-      anchor.click();
-
-      anchor.remove();
-
-      /**
-       * Release object URL after the download
-       * has been triggered.
-       */
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(
-          downloadUrl,
-        );
-      }, 1000);
-
-      setMessage({
-        type: 'success',
-        text:
-          'Complete traffic log downloaded successfully.',
-      });
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text:
-          error instanceof Error
-            ? error.message
-            : 'Unable to download traffic log.',
-      });
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   /* ==========================================================
      DELETE LOGS BY STATUS
      ========================================================== */
 
-  const handleDeleteStatus = async (
-    statusCode: number,
-  ) => {
-    const count =
-      getStatusCount(
-        data.status_summary,
-        statusCode,
-      );
+  const handleDeleteStatus =
+    async (
+      statusCode: number,
+    ) => {
 
-    /**
-     * No records means no API request is required.
-     */
-    if (count === 0) {
-      setMessage({
-        type: 'error',
-        text:
-          `There are no ${statusCode} ` +
-          `traffic logs to delete.`,
-      });
+      const count =
+        getStatusCount(
+          data.status_summary,
+          statusCode,
+        );
 
-      return;
-    }
 
-    /**
-     * Permanent deletion requires explicit confirmation.
-     */
-    const confirmed =
-      window.confirm(
-        `Delete ALL ${count.toLocaleString()} ` +
+      if (count === 0) {
+
+        setMessage({
+          type: 'error',
+          text:
+            `There are no ${statusCode} traffic logs to delete.`,
+        });
+
+        return;
+      }
+
+
+      const confirmed =
+        window.confirm(
+          `Delete ALL ${count.toLocaleString()} ` +
           `traffic log ${
             count === 1
               ? 'record'
               : 'records'
           } with status ${statusCode}?\n\n` +
           `This action cannot be undone.`,
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setDeletingStatus(
-        statusCode,
-      );
-
-      setMessage(null);
-
-      /**
-       * IMPORTANT:
-       *
-       * DELETE
-       * /api/v1/super-admin/traffic/status/{statusCode}
-       */
-      const response =
-        await fetch(
-          `${API_BASE}/super-admin/traffic/status/${statusCode}`,
-          {
-            method: 'DELETE',
-
-            credentials: 'include',
-
-            headers:
-              getAuthenticatedHeaders(
-                false,
-              ),
-
-            cache: 'no-store',
-          },
         );
 
-      const result =
-        await response
-          .json()
-          .catch(() => null);
 
-      if (!response.ok) {
-        let errorMessage =
-          result?.detail ||
-          `Unable to delete ${statusCode} traffic logs.`;
+      if (!confirmed) {
+        return;
+      }
 
-        if (response.status === 401) {
-          errorMessage =
-            'Not authenticated (HTTP 401). Please sign in again and retry.';
-        }
 
-        if (response.status === 403) {
-          errorMessage =
-            'Access denied. Super Admin privileges are required.';
-        }
+      try {
 
-        throw new Error(
-          `${errorMessage} (HTTP ${response.status})`,
+        setDeletingStatus(
+          statusCode,
         );
-      }
 
-      setMessage({
-        type: 'success',
-        text:
-          result?.message ||
-          `Deleted ${
-            result?.deleted_count ??
-            count
-          } log records with status ${statusCode}.`,
-      });
+        setMessage(null);
 
-      /**
-       * Refresh the parent traffic data so:
-       *
-       * - Total requests updates
-       * - Unique IP count updates
-       * - Status counts update
-       * - Latest logs update
-       */
-      if (onRefresh) {
-        await onRefresh();
+
+        const token =
+          getAccessToken();
+
+
+        if (!token) {
+          throw new Error(
+            'Authentication token not found. Please sign in again.',
+          );
+        }
+
+
+        /**
+         * Backend:
+         *
+         * DELETE
+         * /api/v1/super-admin/traffic/status/{statusCode}
+         *
+         * Requires:
+         *
+         * Authorization: Bearer <JWT>
+         */
+        const response =
+          await fetch(
+            `${API_BASE}/super-admin/traffic/status/${statusCode}`,
+            {
+              method: 'DELETE',
+
+              headers:
+                getAuthHeaders(
+                  false,
+                ),
+
+              credentials:
+                'include',
+
+              cache:
+                'no-store',
+            },
+          );
+
+
+        const result =
+          await response
+            .json()
+            .catch(
+              () => null,
+            );
+
+
+        if (!response.ok) {
+
+          let errorMessage =
+            result?.detail ||
+            `Unable to delete ${statusCode} traffic logs.`;
+
+
+          if (
+            response.status ===
+            401
+          ) {
+            errorMessage =
+              'Not authenticated (HTTP 401). Please sign in again.';
+          }
+
+
+          if (
+            response.status ===
+            403
+          ) {
+            errorMessage =
+              'Access denied. Super Admin privileges are required.';
+          }
+
+
+          throw new Error(
+            `${errorMessage} (HTTP ${response.status})`,
+          );
+        }
+
+
+        setMessage({
+          type: 'success',
+          text:
+            result?.message ||
+            `Deleted ${
+              result?.deleted_count ??
+              count
+            } log records with status ${statusCode}.`,
+        });
+
+
+        /**
+         * Refresh parent data.
+         */
+        if (onRefresh) {
+          await onRefresh();
+        }
+
+      } catch (
+        error
+      ) {
+
+        setMessage({
+          type: 'error',
+          text:
+            error instanceof Error
+              ? error.message
+              : `Unable to delete ${statusCode} traffic logs.`,
+        });
+
+      } finally {
+
+        setDeletingStatus(
+          null,
+        );
+
       }
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text:
-          error instanceof Error
-            ? error.message
-            : `Unable to delete ${statusCode} traffic logs.`,
-      });
-    } finally {
-      setDeletingStatus(
-        null,
-      );
-    }
-  };
+    };
+
 
   /* ==========================================================
      RENDER
@@ -550,7 +637,7 @@ export default function TrafficTab({
     <div className="space-y-6">
 
       {/* ======================================================
-          TOP METRICS
+          METRICS
       ======================================================= */}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -568,11 +655,11 @@ export default function TrafficTab({
           </p>
 
           <p className="text-xs text-stone-400 mt-2">
-            Total records currently stored in
-            the traffic table.
+            Total records currently stored in the traffic table.
           </p>
 
         </div>
+
 
         {/* Unique Visitors */}
 
@@ -587,8 +674,7 @@ export default function TrafficTab({
           </p>
 
           <p className="text-xs text-stone-400 mt-2">
-            Distinct IP addresses captured in
-            traffic logs.
+            Distinct IP addresses captured in traffic logs.
           </p>
 
         </div>
@@ -603,7 +689,8 @@ export default function TrafficTab({
       {message && (
         <div
           className={`rounded-xl border px-4 py-3 text-sm font-medium ${
-            message.type === 'success'
+            message.type ===
+            'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-rose-50 border-rose-200 text-rose-800'
           }`}
@@ -639,7 +726,7 @@ export default function TrafficTab({
             </div>
 
 
-            {/* Download Button */}
+            {/* Download */}
 
             <button
               type="button"
@@ -676,7 +763,7 @@ export default function TrafficTab({
 
 
         {/* ====================================================
-            DELETE STATUS CONTROLS
+            DELETE STATUS SECTION
         ===================================================== */}
 
         <div className="p-5 bg-stone-50 border-b border-stone-200">
@@ -699,6 +786,7 @@ export default function TrafficTab({
 
             {statusSummary.map(
               (item) => {
+
                 const status =
                   item.status_code;
 
@@ -709,9 +797,12 @@ export default function TrafficTab({
                   deletingStatus ===
                   status;
 
+
                 return (
                   <button
-                    key={status}
+                    key={
+                      status
+                    }
                     type="button"
                     onClick={() =>
                       handleDeleteStatus(
@@ -739,6 +830,7 @@ export default function TrafficTab({
                         {status}
                       </span>
 
+
                       {deleting && (
                         <span className="animate-spin h-3 w-3 rounded-full border border-stone-300 border-t-stone-700" />
                       )}
@@ -751,7 +843,8 @@ export default function TrafficTab({
                     </p>
 
                     <p className="text-[10px] text-stone-400">
-                      {count === 1
+                      {count ===
+                      1
                         ? 'record'
                         : 'records'}
                     </p>
@@ -769,12 +862,12 @@ export default function TrafficTab({
 
 
       {/* ======================================================
-          LIVE TRAFFIC TABLE
+          LIVE TRAFFIC STREAM
       ======================================================= */}
 
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
 
-        {/* Table Header */}
+        {/* Header */}
 
         <div className="p-4 border-b border-stone-200 bg-stone-50">
 
@@ -854,6 +947,7 @@ export default function TrafficTab({
 
               {data.logs.length ===
               0 ? (
+
                 <tr>
 
                   <td
@@ -864,9 +958,12 @@ export default function TrafficTab({
                   </td>
 
                 </tr>
+
               ) : (
+
                 data.logs.map(
                   (log) => (
+
                     <tr
                       key={
                         log.id
@@ -881,7 +978,7 @@ export default function TrafficTab({
                       </td>
 
 
-                      {/* METHOD + PATH */}
+                      {/* METHOD / PATH */}
 
                       <td className="p-3">
 
@@ -914,6 +1011,7 @@ export default function TrafficTab({
                               log.method
                             }
                           </span>
+
 
                           <span
                             className="text-stone-800 font-semibold break-all"
@@ -1010,8 +1108,10 @@ export default function TrafficTab({
                       </td>
 
                     </tr>
+
                   ),
                 )
+
               )}
 
             </tbody>
